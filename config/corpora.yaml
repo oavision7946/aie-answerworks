@@ -1,0 +1,7 @@
+# Optional: shared corpora ingested by api/scripts/ingest.py --corpus <name>
+corpora: []
+# Example:
+#  - name: company-handbook
+#    description: Internal policies
+#    source: { type: filesystem, path: ./data/handbook }
+#    public: false

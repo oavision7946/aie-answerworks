@@ -1,0 +1,34 @@
+# LLM providers. No secrets here: api_key_env names an environment variable
+# that must be defined in .env when the provider is enabled.
+default_provider: anthropic
+
+providers:
+  anthropic:
+    type: anthropic
+    enabled: true
+    api_key_env: ANTHROPIC_API_KEY
+    default_model: claude-sonnet-5-5
+    models:
+      - id: claude-sonnet-5-5
+        label: Claude Sonnet 5.5
+      - id: claude-haiku-4-5-20251001
+        label: Claude Haiku 4.5
+
+  openai:
+    type: openai
+    enabled: false
+    api_key_env: OPENAI_API_KEY
+    default_model: gpt-4o
+    models:
+      - id: gpt-4o
+        label: GPT-4o
+
+  local:
+    type: openai_compatible   # Ollama, vLLM, llama.cpp server, ...
+    enabled: false
+    base_url: http://localhost:11434/v1
+    api_key_env: LOCAL_LLM_API_KEY   # optional for most local servers
+    default_model: llama3.1
+    models:
+      - id: llama3.1
+        label: Llama 3.1 (local)

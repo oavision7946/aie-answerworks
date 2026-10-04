@@ -1,0 +1,13 @@
+app:
+  name: AnswerWorks
+  environment: development
+
+cors:
+  allow_origins: ["http://localhost:8501"]
+
+auth:
+  access_token_ttl_minutes: 15
+  refresh_token_ttl_days: 7
+
+limits:
+  max_upload_mb: 20
