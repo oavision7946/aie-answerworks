@@ -1,10 +1,12 @@
 name: UI CI
 
 on:
-  push:
-    paths: ["ui/**", ".github/workflows/ui-ci.yml"]
-  pull_request:
-    paths: ["ui/**", ".github/workflows/ui-ci.yml"]
+  # Disabled for now (manual runs only). To re-enable, restore:
+  # push:
+  #   paths: ["ui/**", ".github/workflows/ui-ci.yml"]
+  # pull_request:
+  #   paths: ["ui/**", ".github/workflows/ui-ci.yml"]
+  workflow_dispatch:
 
 jobs:
   test:

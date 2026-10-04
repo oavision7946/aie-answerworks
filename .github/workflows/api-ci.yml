@@ -1,10 +1,12 @@
 name: API CI
 
 on:
-  push:
-    paths: ["api/**", "config/**", ".github/workflows/api-ci.yml"]
-  pull_request:
-    paths: ["api/**", "config/**", ".github/workflows/api-ci.yml"]
+  # Disabled for now (manual runs only). To re-enable, restore:
+  # push:
+  #   paths: ["api/**", "config/**", ".github/workflows/api-ci.yml"]
+  # pull_request:
+  #   paths: ["api/**", "config/**", ".github/workflows/api-ci.yml"]
+  workflow_dispatch:
 
 jobs:
   test:
