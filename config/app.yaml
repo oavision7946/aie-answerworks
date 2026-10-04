@@ -11,3 +11,10 @@ auth:
 
 limits:
   max_upload_mb: 20
+
+# OpenAI-backed /ask endpoint (imported from aie-log-analysis).
+llm:
+  default_model: gpt-4o-mini
+  timeout_seconds: 20.0
+  max_attempts: 3
+  retry_base_delay_seconds: 0.5

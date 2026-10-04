@@ -17,12 +17,17 @@ AI chat application with RAG. FastAPI backend, Streamlit frontend, PostgreSQL + 
 
 ```bash
 cp .env.example .env     # fill in keys and JWT_SECRET
-make install
+make install      # uv sync in api/ and ui/
 make test
 ```
 
 Run `make run-api` and `make run-ui` in separate terminals. The API docs are served at http://localhost:8000/docs.
 
+### To run demo_page.py do: 
+```bash
+uv run  streamlit run demo_page.py --server.port 8502
+```
+
 ## Status
 
-Step 1 (skeleton) done. Next: API core (config loader, Postgres, migrations, health).
+Step 1 (skeleton) done. Imported the log-analysis `/health`, `/models`, `/ask` API and chat UI (OpenAI-backed; needs `OPENAI_API_KEY`). Next: API core (Postgres, migrations, auth).

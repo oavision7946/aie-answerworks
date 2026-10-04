@@ -1,0 +1,9 @@
+# USD per 1M tokens. A model must be listed here to be selectable via /models and /ask.
+models:
+  gpt-5.5:      { input_tokens: 5.0,  cached_input: 0.5,   output_tokens: 30.0 }
+  gpt-5.4-mini: { input_tokens: 0.75, cached_input: 0.075, output_tokens: 4.5 }
+  gpt-5.4-nano: { input_tokens: 0.2,  cached_input: 0.02,  output_tokens: 1.25 }
+  gpt-4.1:      { input_tokens: 2.0,  cached_input: 0.5,   output_tokens: 8.0 }
+  gpt-4.1-mini: { input_tokens: 0.4,  cached_input: 0.10,  output_tokens: 1.6 }
+  gpt-4o:       { input_tokens: 2.5,  cached_input: 1.25,  output_tokens: 10.0 }
+  gpt-4o-mini:  { input_tokens: 0.15, cached_input: 0.075, output_tokens: 0.6 }

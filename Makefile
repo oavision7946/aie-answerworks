@@ -6,35 +6,35 @@ UI_DIR  := ui
 install: install-api install-ui
 
 install-api:
-	cd $(API_DIR) && pip install -e ".[dev]"
+	cd $(API_DIR) && uv sync --extra dev
 
 install-ui:
-	cd $(UI_DIR) && pip install -e ".[dev]"
+	cd $(UI_DIR) && uv sync --extra dev
 
 run-api:
-	cd $(API_DIR) && uvicorn app.main:app --reload --port 8000
+	cd $(API_DIR) && uv run uvicorn app.main:app --reload --port 8000
 
 run-ui:
-	cd $(UI_DIR) && streamlit run app/main.py --server.port 8501
+	cd $(UI_DIR) && uv run streamlit run app/main.py --server.port 8501
 
 test: test-api test-ui
 
 test-api:
-	cd $(API_DIR) && pytest
+	cd $(API_DIR) && uv run pytest
 
 test-ui:
-	cd $(UI_DIR) && pytest
+	cd $(UI_DIR) && uv run pytest
 
 lint:
-	cd $(API_DIR) && ruff check . && ruff format --check .
-	cd $(UI_DIR) && ruff check . && ruff format --check .
+	cd $(API_DIR) && uv run ruff check . && uv run ruff format --check .
+	cd $(UI_DIR) && uv run ruff check . && uv run ruff format --check .
 
 format:
-	cd $(API_DIR) && ruff check --fix . && ruff format .
-	cd $(UI_DIR) && ruff check --fix . && ruff format .
+	cd $(API_DIR) && uv run ruff check --fix . && uv run ruff format .
+	cd $(UI_DIR) && uv run ruff check --fix . && uv run ruff format .
 
 migrate:
-	cd $(API_DIR) && alembic upgrade head
+	cd $(API_DIR) && uv run alembic upgrade head
 
 docs:
 	mkdocs build

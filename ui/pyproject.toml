@@ -33,8 +33,12 @@ addopts = "-ra --cov=app --cov-report=term-missing"
 [tool.coverage.report]
 fail_under = 85
 
+[tool.coverage.run]
+omit = ["demo_page.py"]
+
 [tool.ruff]
 line-length = 100
+extend-exclude = ["demo_page.py"]
 target-version = "py311"
 
 [tool.ruff.lint]
