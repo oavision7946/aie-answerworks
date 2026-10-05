@@ -10,7 +10,8 @@ class TestAskRequest(unittest.TestCase):
         request = AskRequest(question="  why?  ")
 
         self.assertEqual(request.question, "why?")
-        self.assertEqual(request.model, "gpt-4o-mini")
+        self.assertIsNone(request.model)
+        self.assertIsNone(request.provider)
         self.assertFalse(request.stream)
         self.assertFalse(request.force_bad_first_response)
 
@@ -18,7 +19,8 @@ class TestAskRequest(unittest.TestCase):
         for payload in (
             {"question": " "},
             {"question": ""},
-            {"question": "Hi", "model": "nope"},
+            {"question": "Hi", "model": 5},
+            {"question": "Hi", "provider": 5},
             {"question": "Hi", "extra": True},
             {"question": 5},
             {"question": "Hi", "stream": "yes"},

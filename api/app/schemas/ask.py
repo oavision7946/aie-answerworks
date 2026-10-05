@@ -1,13 +1,13 @@
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 
-from app.core.config import get_llm_settings, load_model_costs
-
 
 class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: StrictStr = Field(min_length=1)
-    model: StrictStr = get_llm_settings().default_model
+    # Both optional: omitted -> the default provider's default model.
+    provider: StrictStr | None = None
+    model: StrictStr | None = None
     stream: StrictBool = False
     force_bad_first_response: StrictBool = False
     force_bad: StrictBool = False
@@ -19,13 +19,6 @@ class AskRequest(BaseModel):
         if not question:
             raise ValueError("question must not be blank")
         return question
-
-    @field_validator("model")
-    @classmethod
-    def model_must_be_configured(cls, model: str) -> str:
-        if model not in load_model_costs():
-            raise ValueError(f"model must be one of: {', '.join(load_model_costs())}")
-        return model
 
 
 class ModelOutput(BaseModel):
@@ -42,11 +35,20 @@ class ModelOutput(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
+    provider: str
     model: str
     tokens_used: int
     latency_ms: int
-    cost_usd: float
+    cost_usd: float | None  # null when the model has no pricing configured
+
+
+class ModelInfo(BaseModel):
+    provider: str
+    id: str
+    label: str
 
 
 class ModelsResponse(BaseModel):
-    models: list[str]
+    default_provider: str | None
+    default_model: str | None
+    models: list[ModelInfo]

@@ -1,4 +1,5 @@
 import os
 
-# Must be set before app.services.llm.openai_service is imported so an OpenAI client exists.
-os.environ["OPENAI_API_KEY"] = "test-key"
+# Keep real provider keys out of tests: nothing here should ever reach a network.
+for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LOCAL_LLM_API_KEY"):
+    os.environ.pop(key, None)

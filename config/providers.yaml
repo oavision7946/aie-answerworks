@@ -1,7 +1,17 @@
 # LLM providers. No secrets here: api_key_env names an environment variable
-# that must be defined in .env when the provider is enabled.
+# that must be defined in .env when the provider is enabled. An enabled provider whose key
+# is missing is skipped at startup (with a warning) instead of failing the whole API.
 default_provider: anthropic
 
+# Applied to every provider call.
+request:
+  timeout_seconds: 60.0
+  max_attempts: 3                 # transient errors (timeouts, 429, 5xx) are retried
+  retry_base_delay_seconds: 0.5   # exponential backoff: 0.5s, 1s, 2s, ...
+  max_output_tokens: 4096         # required by Anthropic; sent as max_tokens
+
+# Model pricing is optional and given in USD per 1M tokens. Without it the API reports
+# cost_usd as null for that model. cached_input defaults to the input price.
 providers:
   anthropic:
     type: anthropic
@@ -10,18 +20,38 @@ providers:
     default_model: claude-sonnet-5-5
     models:
       - id: claude-sonnet-5-5
-        label: Claude Sonnet 5.5
+        label: Claude Sonnet 5.5      # pricing not set: add it when you have the rate card
       - id: claude-haiku-4-5-20251001
         label: Claude Haiku 4.5
+        pricing: { input: 1.0, cached_input: 0.1, output: 5.0 }   # verify against current rates
 
   openai:
     type: openai
-    enabled: false
+    enabled: true
     api_key_env: OPENAI_API_KEY
-    default_model: gpt-4o
+    default_model: gpt-4o-mini
     models:
+      - id: gpt-5.5
+        label: GPT-5.5
+        pricing: { input: 5.0, cached_input: 0.5, output: 30.0 }
+      - id: gpt-5.4-mini
+        label: GPT-5.4 mini
+        pricing: { input: 0.75, cached_input: 0.075, output: 4.5 }
+      - id: gpt-5.4-nano
+        label: GPT-5.4 nano
+        pricing: { input: 0.2, cached_input: 0.02, output: 1.25 }
+      - id: gpt-4.1
+        label: GPT-4.1
+        pricing: { input: 2.0, cached_input: 0.5, output: 8.0 }
+      - id: gpt-4.1-mini
+        label: GPT-4.1 mini
+        pricing: { input: 0.4, cached_input: 0.10, output: 1.6 }
       - id: gpt-4o
         label: GPT-4o
+        pricing: { input: 2.5, cached_input: 1.25, output: 10.0 }
+      - id: gpt-4o-mini
+        label: GPT-4o mini
+        pricing: { input: 0.15, cached_input: 0.075, output: 0.6 }
 
   local:
     type: openai_compatible   # Ollama, vLLM, llama.cpp server, ...
@@ -32,3 +62,12 @@ providers:
     models:
       - id: llama3.1
         label: Llama 3.1 (local)
+
+  # Deterministic echo provider: no network, no key. Enable for demos, UI work and E2E tests.
+  fake:
+    type: fake
+    enabled: false
+    default_model: echo
+    models:
+      - id: echo
+        label: Echo (fake)

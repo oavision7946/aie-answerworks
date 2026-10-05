@@ -1,16 +1,14 @@
-from app.core.config import config_dir, load_model_costs
+from app.core.settings import Pricing
+from app.services.llm.base import Usage
 
 
-def compute_cost_usd(
-    model: str, input_tokens: int, cached_input_tokens: int, output_tokens: int
-) -> float:
-    pricing = load_model_costs().get(model)
+def compute_cost_usd(pricing: Pricing | None, usage: Usage) -> float | None:
+    """Cost in USD, or None when the model has no pricing configured."""
     if pricing is None:
-        path = config_dir() / "model_costs.yaml"
-        raise ValueError(f"Model {model!r} is not configured in {path}")
-
+        return None
+    uncached_input = max(usage.input_tokens - usage.cached_input_tokens, 0)
     return (
-        (input_tokens / 1_000_000) * pricing["input_tokens"]
-        + (cached_input_tokens / 1_000_000) * pricing["cached_input"]
-        + (output_tokens / 1_000_000) * pricing["output_tokens"]
+        (uncached_input / 1_000_000) * pricing.input
+        + (usage.cached_input_tokens / 1_000_000) * pricing.cached_input_price
+        + (usage.output_tokens / 1_000_000) * pricing.output
     )

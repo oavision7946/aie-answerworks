@@ -17,13 +17,35 @@ class _Strict(BaseModel):
 # --- providers.yaml ---------------------------------------------------------------------------
 
 
+class Pricing(_Strict):
+    """USD per 1M tokens."""
+
+    input: float = Field(ge=0)
+    output: float = Field(ge=0)
+    cached_input: float | None = Field(default=None, ge=0)
+
+    @property
+    def cached_input_price(self) -> float:
+        return self.input if self.cached_input is None else self.cached_input
+
+
 class ModelConfig(_Strict):
     id: str
     label: str
+    pricing: Pricing | None = None
+
+
+class RequestConfig(_Strict):
+    """Timeout, retry and output limits applied to every provider call."""
+
+    timeout_seconds: float = Field(gt=0)
+    max_attempts: int = Field(ge=1)
+    retry_base_delay_seconds: float = Field(ge=0)
+    max_output_tokens: int = Field(gt=0)
 
 
 class ProviderConfig(_Strict):
-    type: Literal["anthropic", "openai", "openai_compatible"]
+    type: Literal["anthropic", "openai", "openai_compatible", "fake"]
     enabled: bool = False
     api_key_env: str | None = None
     base_url: str | None = None
@@ -31,14 +53,22 @@ class ProviderConfig(_Strict):
     models: list[ModelConfig] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def default_model_must_be_listed(self) -> "ProviderConfig":
-        if self.default_model not in {m.id for m in self.models}:
+    def validate_provider(self) -> "ProviderConfig":
+        ids = [m.id for m in self.models]
+        if len(ids) != len(set(ids)):
+            raise ValueError("model ids must be unique within a provider")
+        if self.default_model not in ids:
             raise ValueError(f"default_model {self.default_model!r} is not in models")
+        if self.type in ("anthropic", "openai") and not self.api_key_env:
+            raise ValueError(f"{self.type} providers require api_key_env")
+        if self.type == "openai_compatible" and not self.base_url:
+            raise ValueError("openai_compatible providers require base_url")
         return self
 
 
 class ProvidersConfig(_Strict):
     default_provider: str
+    request: RequestConfig
     providers: dict[str, ProviderConfig]
 
     @model_validator(mode="after")
@@ -113,19 +143,11 @@ class LimitsConfig(_Strict):
     max_upload_mb: int = Field(gt=0)
 
 
-class LLMConfig(_Strict):
-    default_model: str
-    timeout_seconds: float = Field(gt=0)
-    max_attempts: int = Field(ge=1)
-    retry_base_delay_seconds: float = Field(ge=0)
-
-
 class AppConfig(_Strict):
     app: AppInfo
     cors: CorsConfig
     auth: AuthConfig
     limits: LimitsConfig
-    llm: LLMConfig
 
 
 # --- corpora.yaml -----------------------------------------------------------------------------
@@ -185,7 +207,7 @@ class Settings(BaseModel):
         return {
             name: p.api_key_env
             for name, p in self.providers.enabled.items()
-            if p.api_key_env and p.type != "openai_compatible" and not os.getenv(p.api_key_env)
+            if p.type in ("anthropic", "openai") and p.api_key_env and not os.getenv(p.api_key_env)
         }
 
 

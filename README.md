@@ -37,4 +37,4 @@ uv run  streamlit run demo_page.py --server.port 8502
 
 ## Status
 
-Steps 1 (skeleton) and 2 (API core: validated config, Postgres session, Alembic, health) done. Imported the log-analysis `/health`, `/models`, `/ask` API and chat UI (OpenAI-backed; needs `OPENAI_API_KEY`). Next: provider layer.
+Steps 1 (skeleton) and 2 (API core: validated config, Postgres session, Alembic, health) done. The imported `/ask` and chat UI now run on the provider layer. Step 3 (provider layer: Anthropic, OpenAI, OpenAI-compatible local and fake providers behind one interface) done. Next: auth and users.

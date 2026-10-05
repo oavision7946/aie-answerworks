@@ -12,26 +12,59 @@ from app import config
 
 class AskResponse(BaseModel):
     answer: str
+    provider: str = ""
     model: str
     tokens_used: int
-    cost_usd: float
+    cost_usd: float | None = None  # None when the model has no pricing configured
+
+
+class ModelInfo(BaseModel):
+    provider: str
+    id: str
+    label: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.provider}/{self.id}" if self.provider else self.id
+
+    @property
+    def display(self) -> str:
+        return f"{self.label} · {self.provider}" if self.provider else self.label
 
 
 class ModelsResponse(BaseModel):
-    models: list[str]
+    default_provider: str | None = None
+    default_model: str | None = None
+    models: list[ModelInfo]
 
 
 def _url(path: str) -> str:
     return f"{config.API_BASE_URL.rstrip('/')}{path}"
 
 
-def get_models() -> list[str]:
+def fallback_model() -> ModelInfo:
+    return ModelInfo(provider="", id=config.FALLBACK_MODEL, label=config.FALLBACK_MODEL)
+
+
+def get_models() -> ModelsResponse:
+    """The API's models, or a single fallback entry when the API cannot be reached."""
     try:
         response = httpx.get(_url("/models"), timeout=config.MODELS_TIMEOUT_SECONDS)
         response.raise_for_status()
-        return ModelsResponse.model_validate(response.json()).models
+        return ModelsResponse.model_validate(response.json())
     except (httpx.HTTPError, ValidationError, ValueError):
-        return [config.FALLBACK_MODEL]
+        return ModelsResponse(models=[fallback_model()])
+
+
+def _payload(question: str, model: ModelInfo, force_bad_first_response: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "question": question,
+        "model": model.id,
+        "force_bad_first_response": force_bad_first_response,
+    }
+    if model.provider:
+        payload["provider"] = model.provider
+    return payload
 
 
 def _error_detail(response: httpx.Response) -> Any:
@@ -41,14 +74,10 @@ def _error_detail(response: httpx.Response) -> Any:
         return response.text
 
 
-def call_api(question: str, model: str, force_bad_first_response: bool) -> AskResponse:
+def call_api(question: str, model: ModelInfo, force_bad_first_response: bool) -> AskResponse:
     response = httpx.post(
         _url("/ask"),
-        json={
-            "question": question,
-            "model": model,
-            "force_bad_first_response": force_bad_first_response,
-        },
+        json=_payload(question, model, force_bad_first_response),
         timeout=config.ASK_TIMEOUT_SECONDS,
     )
     if response.is_error:
@@ -61,7 +90,7 @@ def call_api(question: str, model: str, force_bad_first_response: bool) -> AskRe
 
 def call_streaming_api(
     question: str,
-    model: str,
+    model: ModelInfo,
     force_bad_first_response: bool,
     render_answer: Callable[[str], Any],
 ) -> AskResponse:
@@ -71,12 +100,7 @@ def call_streaming_api(
     with httpx.stream(
         "POST",
         _url("/ask"),
-        json={
-            "question": question,
-            "model": model,
-            "stream": True,
-            "force_bad_first_response": force_bad_first_response,
-        },
+        json={**_payload(question, model, force_bad_first_response), "stream": True},
         timeout=config.ASK_TIMEOUT_SECONDS,
     ) as response:
         if response.is_error:

@@ -12,6 +12,7 @@ from app.core import config, settings
 from app.core.settings import (
     ChunkingConfig,
     CorporaConfig,
+    Pricing,
     ProvidersConfig,
     load_settings,
 )
@@ -35,7 +36,11 @@ class TestRepoConfigIsValid(unittest.TestCase):
 
         self.assertEqual(loaded.app.app.name, "AnswerWorks")
         self.assertEqual(loaded.providers.default_provider, "anthropic")
-        self.assertEqual(list(loaded.providers.enabled), ["anthropic"])
+        self.assertEqual(list(loaded.providers.enabled), ["anthropic", "openai"])
+        self.assertEqual(loaded.providers.request.max_attempts, 3)
+        gpt = next(m for m in loaded.providers.providers["openai"].models if m.id == "gpt-4o-mini")
+        self.assertEqual(gpt.pricing.input, 0.15)
+        self.assertEqual(gpt.pricing.cached_input_price, 0.075)
         self.assertEqual(loaded.rag.chunking.size, 800)
         self.assertEqual(loaded.rag.retrieval.top_k, 5)
         self.assertEqual(loaded.corpora.corpora, [])
@@ -55,8 +60,13 @@ class TestRepoConfigIsValid(unittest.TestCase):
         loaded = settings.get_settings()
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("ANTHROPIC_API_KEY", None)
-            self.assertEqual(loaded.missing_provider_keys(), {"anthropic": "ANTHROPIC_API_KEY"})
+            os.environ.pop("OPENAI_API_KEY", None)
+            self.assertEqual(
+                loaded.missing_provider_keys(),
+                {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"},
+            )
             os.environ["ANTHROPIC_API_KEY"] = "k"
+            os.environ["OPENAI_API_KEY"] = "k"
             self.assertEqual(loaded.missing_provider_keys(), {})
 
 
@@ -72,7 +82,7 @@ class TestProvidersValidation(unittest.TestCase):
 
     def test_default_provider_must_be_enabled(self):
         data = providers_data()
-        data["default_provider"] = "openai"
+        data["default_provider"] = "local"
         with self.assertRaisesRegex(ValidationError, "not enabled"):
             ProvidersConfig.model_validate(data)
 
@@ -91,6 +101,35 @@ class TestProvidersValidation(unittest.TestCase):
         data["providers"]["anthropic"]["type"] = "mystery"
         with self.assertRaises(ValidationError):
             ProvidersConfig.model_validate(data)
+
+    def test_default_model_must_be_unique_and_keys_required(self):
+        data = providers_data()
+        data["providers"]["openai"]["models"].append(dict(data["providers"]["openai"]["models"][0]))
+        with self.assertRaisesRegex(ValidationError, "unique"):
+            ProvidersConfig.model_validate(data)
+
+        data = providers_data()
+        del data["providers"]["anthropic"]["api_key_env"]
+        with self.assertRaisesRegex(ValidationError, "require api_key_env"):
+            ProvidersConfig.model_validate(data)
+
+        data = providers_data()
+        del data["providers"]["local"]["base_url"]
+        with self.assertRaisesRegex(ValidationError, "require base_url"):
+            ProvidersConfig.model_validate(data)
+
+    def test_request_limits_are_validated(self):
+        for key, value in (("max_attempts", 0), ("timeout_seconds", 0), ("max_output_tokens", 0)):
+            data = providers_data()
+            data["request"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                ProvidersConfig.model_validate(data)
+
+    def test_pricing_cannot_be_negative_and_cached_defaults_to_input(self):
+        pricing = Pricing(input=2.0, output=3.0)
+        self.assertEqual(pricing.cached_input_price, 2.0)
+        with self.assertRaises(ValidationError):
+            Pricing(input=-1, output=1)
 
 
 class TestOtherValidation(unittest.TestCase):

@@ -1,7 +1,6 @@
 """Configuration loading: YAML from the repo-level config/ directory, secrets from .env."""
 
 import os
-from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -30,32 +29,5 @@ def load_yaml(name: str) -> dict[str, Any]:
     return data or {}
 
 
-@dataclass(frozen=True)
-class LLMSettings:
-    default_model: str
-    timeout_seconds: float
-    max_attempts: int
-    retry_base_delay_seconds: float
-
-
-@lru_cache
-def get_llm_settings() -> LLMSettings:
-    llm = load_yaml("app.yaml")["llm"]
-    return LLMSettings(
-        default_model=str(llm["default_model"]),
-        timeout_seconds=float(llm["timeout_seconds"]),
-        max_attempts=int(llm["max_attempts"]),
-        retry_base_delay_seconds=float(llm["retry_base_delay_seconds"]),
-    )
-
-
-@lru_cache
-def load_model_costs() -> dict[str, dict[str, float]]:
-    models: dict[str, dict[str, float]] = load_yaml("model_costs.yaml")["models"]
-    return models
-
-
 def clear_config_cache() -> None:
     load_yaml.cache_clear()
-    get_llm_settings.cache_clear()
-    load_model_costs.cache_clear()
