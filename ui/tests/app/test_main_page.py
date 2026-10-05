@@ -36,7 +36,7 @@ class TestMainPage(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(at.selectbox[0].options, ["gpt-4o", "gpt-4o-mini"])
         self.assertEqual(at.selectbox[0].value, "gpt-4o-mini")
-        self.assertTrue(any("What would you like to investigate?" in m.value for m in at.markdown))
+        self.assertTrue(any("What would you like to know?" in m.value for m in at.markdown))
         self.assertEqual(len(at.chat_message), 0)
 
     @respx.mock
@@ -63,13 +63,13 @@ class TestMainPage(unittest.TestCase):
 
         at = new_app().run()
         at.selectbox[0].select("gpt-4o")
-        at.chat_input[0].set_value("Is blk_1 abnormal?").run()
+        at.chat_input[0].set_value("What is RAG?").run()
 
         self.assertFalse(at.exception)
         self.assertEqual(
             json.loads(ask.calls.last.request.content),
             {
-                "question": "Is blk_1 abnormal?",
+                "question": "What is RAG?",
                 "model": "gpt-4o",
                 "force_bad_first_response": False,
             },
@@ -82,7 +82,7 @@ class TestMainPage(unittest.TestCase):
         self.assertEqual(len(at.session_state.messages), 2)
         # the hero is drawn before the question is handled; it is gone on the next rerun
         at.run()
-        self.assertFalse(any("What would you like to investigate?" in m.value for m in at.markdown))
+        self.assertFalse(any("What would you like to know?" in m.value for m in at.markdown))
 
     @respx.mock
     def test_force_bad_first_response_checkbox_is_sent(self):
@@ -138,7 +138,7 @@ class TestMainPage(unittest.TestCase):
         self.assertEqual(len(at.error), 1)
 
     @respx.mock
-    def test_new_investigation_clears_history(self):
+    def test_new_chat_clears_history(self):
         respx.get(f"{BASE}/models").respond(json={"models": ["gpt-4o-mini"]})
         respx.post(f"{BASE}/ask").respond(json=RESULT)
 

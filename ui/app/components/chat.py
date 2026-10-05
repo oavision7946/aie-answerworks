@@ -12,13 +12,13 @@ def render_sidebar() -> tuple[str, bool, bool]:
             """
             <div class="brand">
                 <div class="brand-mark">◌</div>
-                <div class="brand-name">Log Investigator</div>
-                <div class="brand-copy">Evidence-led answers for distributed-system incidents.</div>
+                <div class="brand-name">AnswerWorks</div>
+                <div class="brand-copy">Many models, one workspace.</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("＋  New investigation", use_container_width=True):
+        if st.button("＋  New chat", use_container_width=True):
             reset_messages()
             st.rerun()
         st.markdown('<div class="side-label">Connection</div>', unsafe_allow_html=True)
@@ -40,7 +40,7 @@ def render_sidebar() -> tuple[str, bool, bool]:
                 help="The API will reject an empty first answer with Pydantic, then retry once.",
             )
         st.markdown('<div class="side-label">What to ask</div>', unsafe_allow_html=True)
-        st.caption("Ask about a block, an execution trace, or evidence of an abnormal event.")
+        st.caption("Ask anything. Pick a model and compare answers, cost and token use.")
     return selected_model, stream_responses, force_bad_first_response
 
 
@@ -48,10 +48,10 @@ def render_hero() -> None:
     st.markdown(
         """
         <div class="hero">
-            <div class="hero-kicker">Systems log analysis</div>
-            <h1>What would you like to investigate?</h1>
-            <p>Bring an HDFS trace or block identifier. I’ll look for abnormal behavior
-            and explain the evidence.</p>
+            <div class="hero-kicker">AI chat with RAG</div>
+            <h1>What would you like to know?</h1>
+            <p>Ask a question and choose the model that answers it. Answers can be grounded
+            in your own documents.</p>
         </div>
         """,
         unsafe_allow_html=True,

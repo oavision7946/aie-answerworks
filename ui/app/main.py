@@ -1,4 +1,4 @@
-"""Log Investigator chat page. Run with: streamlit run app/main.py"""
+"""AnswerWorks chat page. Run with: streamlit run app/main.py"""
 
 import httpx
 import streamlit as st
@@ -9,7 +9,7 @@ from app.components.styles import apply_styles
 from app.state.session import init_messages
 
 st.set_page_config(
-    page_title="Log Investigator",
+    page_title="AnswerWorks",
     page_icon="◌",
     layout="centered",
     initial_sidebar_state="expanded",
@@ -28,7 +28,7 @@ for message in st.session_state.messages:
         if message["role"] == "assistant" and message.get("response"):
             render_metadata(AskResponse.model_validate(message["response"]))
 
-if question := st.chat_input("Ask about an incident or trace..."):
+if question := st.chat_input("Ask a question..."):
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
@@ -41,7 +41,7 @@ if question := st.chat_input("Ask about an incident or trace..."):
                     question, selected_model, force_bad_first_response, answer_placeholder.markdown
                 )
             else:
-                with st.spinner("Reviewing the logs..."):
+                with st.spinner("Thinking..."):
                     result = call_api(question, selected_model, force_bad_first_response)
         except (httpx.HTTPError, RuntimeError) as exc:
             st.error(str(exc))

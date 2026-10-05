@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "answerworks-api"
 version = "0.1.0"
 description = "AnswerWorks API: FastAPI backend with auth, conversations and RAG"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -50,11 +50,11 @@ fail_under = 85
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
