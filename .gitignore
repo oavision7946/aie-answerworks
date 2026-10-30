@@ -219,5 +219,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Project specific
+# --- Private project material (never commit) ---
+.internal/
+CLAUDE.local.md
 ProjectPrompts.md
