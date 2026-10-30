@@ -6,7 +6,9 @@ from unittest.mock import call, patch
 
 from fastapi.testclient import TestClient
 
+from app.core.permissions import active_user
 from app.core.settings import ModelConfig
+from app.db.models import Role, User
 from app.main import app
 from app.services.llm.errors import IncompleteResponseError, ProviderError, TransientProviderError
 from app.services.llm.registry import ProviderRegistry, get_registry
@@ -25,6 +27,7 @@ class ApiTestCase(unittest.TestCase):
     def use(self, *providers, default=None):
         registry = make_registry(*providers, default=default)
         app.dependency_overrides[get_registry] = lambda: registry
+        app.dependency_overrides[active_user] = lambda: User(email="t@example.com", role=Role.USER)
         self.addCleanup(app.dependency_overrides.clear)
         self.client = TestClient(app)
         return registry

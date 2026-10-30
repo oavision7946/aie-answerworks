@@ -39,8 +39,19 @@ RESULT = {
 }
 
 
-def new_app() -> AppTest:
-    return AppTest.from_file(MAIN, default_timeout=10)
+SIGNED_IN = {
+    "email": "ana@example.com",
+    "access_token": "access-1",
+    "refresh_token": "refresh-1",
+    "must_change_password": False,
+}
+
+
+def new_app(auth=SIGNED_IN) -> AppTest:
+    at = AppTest.from_file(MAIN, default_timeout=10)
+    if auth is not None:
+        at.session_state["auth"] = dict(auth)
+    return at
 
 
 class TestMainPage(unittest.TestCase):

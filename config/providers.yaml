@@ -12,6 +12,8 @@ request:
 
 # Model pricing is optional and given in USD per 1M tokens. Without it the API reports
 # cost_usd as null for that model. cached_input defaults to the input price.
+# Anthropic models https://platform.claude.com/docs/en/about-claude/pricing
+# OpenAI models https://openai.com/pricing https://developers.openai.com/api/docs/pricing?latest-pricing-expanded=true&context-length=short
 providers:
   anthropic:
     type: anthropic

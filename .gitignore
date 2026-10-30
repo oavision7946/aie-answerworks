@@ -222,4 +222,4 @@ __marimo__/
 # --- Private project material (never commit) ---
 .internal/
 CLAUDE.local.md
-ProjectPrompts.md
+prompts.md

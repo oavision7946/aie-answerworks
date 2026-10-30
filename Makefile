@@ -1,4 +1,4 @@
-.PHONY: db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate docs clean
+.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate docs clean
 
 API_DIR := api
 UI_DIR  := ui
@@ -45,6 +45,10 @@ format:
 
 migrate:
 	cd $(API_DIR) && uv run alembic upgrade head
+
+# Create the first administrator (prompts for email/password, or reads BOOTSTRAP_ADMIN_* from .env).
+create-admin:
+	cd $(API_DIR) && uv run python -m scripts.create_admin
 
 docs:
 	mkdocs build

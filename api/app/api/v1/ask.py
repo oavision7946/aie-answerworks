@@ -3,16 +3,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.core.permissions import active_user
 from app.schemas.ask import AskRequest, AskResponse, ModelsResponse
 from app.services.llm import service
 from app.services.llm.errors import LLMServiceError
 from app.services.llm.registry import ProviderRegistry, get_registry
 
 router = APIRouter()
+SignedIn = [Depends(active_user)]
 Registry = Annotated[ProviderRegistry, Depends(get_registry)]
 
 
-@router.get("/models", response_model=ModelsResponse)
+@router.get("/models", response_model=ModelsResponse, dependencies=SignedIn)
 def models(registry: Registry) -> ModelsResponse:
     default = registry.default_model()
     return ModelsResponse(
@@ -34,7 +36,7 @@ def ask_requires_post() -> None:
     )
 
 
-@router.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=AskResponse, dependencies=SignedIn)
 def ask(request: AskRequest, registry: Registry) -> AskResponse | StreamingResponse:
     try:
         resolved = registry.resolve(request.provider, request.model)

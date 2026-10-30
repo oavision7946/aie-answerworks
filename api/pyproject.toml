@@ -42,7 +42,7 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --cov=app --cov-report=term-missing"
+addopts = "-ra --cov=app --cov=scripts --cov-report=term-missing"
 asyncio_mode = "auto"
 
 [tool.coverage.report]

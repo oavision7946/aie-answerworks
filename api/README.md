@@ -6,6 +6,12 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
 ## Endpoints
 
 - `GET /health` – 200 `{status: ok, database: ok}`, or 503 `degraded` when PostgreSQL is unreachable.
+- `POST /auth/login` – `{email, password}` → `access_token`, `refresh_token`, `expires_in`, and
+  `must_change_password`. Wrong password and unknown email give the same 401; a deactivated account gets 403.
+- `POST /auth/refresh` – `{refresh_token}` → a new token pair (403 for deactivated users).
+- `GET /auth/me`, `POST /auth/change-password` – usable while a password change is pending.
+- `POST /admin/users`, `GET /admin/users`, `PATCH /admin/users/{id}` (role, `is_active`),
+  `POST /admin/users/{id}/reset-password` – admin only. You cannot deactivate or demote yourself.
 - `GET /models` – every model of every available provider (`provider`, `id`, `label`) plus the default.
 - `POST /ask` – `{question, provider?, model?, stream?}` → answer with `provider`, `model`,
   `tokens_used`, `latency_ms` and `cost_usd` (`null` when the model has no pricing). Omit
@@ -13,6 +19,23 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
   (`delta`, `done`, `error`). Transient provider errors are retried with exponential backoff; an
   invalid (blank) answer is retried once. `/ask` is a stateless stopgap and goes away once
   conversations land.
+
+## Authentication
+
+Send `Authorization: Bearer <access_token>`. Everything except `/health`, `/auth/login` and
+`/auth/refresh` needs it; `/models`, `/ask` and the admin routes additionally need the password
+change to be done, and `/admin/*` needs the `admin` role. Accounts are created by admins (no
+registration). Status codes: 401 missing/invalid/expired token, 403 wrong role, deactivated account or
+pending password change, 503 when `JWT_SECRET` is empty or under 16 characters.
+
+- Passwords: Argon2, 12 to 128 characters. Tokens: HS256 JWT, lifetimes in `config/app.yaml` (`auth:`).
+  Access and refresh tokens are not interchangeable.
+- Every request re-reads the user, so deactivating an account locks out its existing access token too.
+- First admin: `make create-admin` (or `cd api && uv run python -m scripts.create_admin`). It reads
+  `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` or prompts, and refuses to run if an admin exists.
+- Code: `app/core/security.py` (hashing, JWT), `app/core/permissions.py` (`current_user`,
+  `active_user`, `admin_user` dependencies), `app/services/auth_service.py`, `app/api/v1/auth.py`,
+  `app/api/v1/admin_users.py`. Tests use `tests/auth_helpers.py` (in-memory database and tokens).
 
 ## Providers
 
@@ -36,7 +59,7 @@ config, then `ANSWERWORKS_CONFIG_DIR=/path/to/copy make run-api`.
 
 ## Layout
 
-`app/main.py` (app wiring) · `app/api/` (routes, error handlers) · `app/schemas/ask.py` ·
+`app/main.py` (app wiring) · `app/api/` (routes, error handlers) · `app/schemas/` · `app/db/repositories/` · `scripts/` ·
 `app/services/llm/` (provider interface, adapters, registry, chat service, retry, cost) · `app/core/config.py` (YAML/.env).
 Tests: `tests/unit`, `tests/contract` (HTTP behaviour).
 

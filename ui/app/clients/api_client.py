@@ -10,6 +10,16 @@ from pydantic import BaseModel, ValidationError
 from app import config
 
 
+class AuthExpired(RuntimeError):
+    """The API rejected the access token (missing, expired or revoked)."""
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    must_change_password: bool = False
+
+
 class AskResponse(BaseModel):
     answer: str
     provider: str = ""
@@ -46,10 +56,59 @@ def fallback_model() -> ModelInfo:
     return ModelInfo(provider="", id=config.FALLBACK_MODEL, label=config.FALLBACK_MODEL)
 
 
-def get_models() -> ModelsResponse:
+def _headers(token: str | None) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _post_auth(path: str, json_body: dict[str, str], token: str | None = None) -> httpx.Response:
+    try:
+        return httpx.post(
+            _url(path),
+            json=json_body,
+            headers=_headers(token),
+            timeout=config.MODELS_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise RuntimeError("Could not reach the API. Is it running?") from exc
+
+
+def _token_pair(response: httpx.Response) -> TokenPair:
+    if response.is_error:
+        raise RuntimeError(str(_error_detail(response)))
+    try:
+        return TokenPair.model_validate(response.json())
+    except (ValueError, ValidationError) as exc:
+        raise RuntimeError("The API returned an unexpected response.") from exc
+
+
+def login(email: str, password: str) -> TokenPair:
+    return _token_pair(_post_auth("/auth/login", {"email": email, "password": password}))
+
+
+def refresh(refresh_token: str) -> TokenPair:
+    return _token_pair(_post_auth("/auth/refresh", {"refresh_token": refresh_token}))
+
+
+def change_password(current_password: str, new_password: str, token: str) -> None:
+    response = _post_auth(
+        "/auth/change-password",
+        {"current_password": current_password, "new_password": new_password},
+        token,
+    )
+    if response.status_code == 401:
+        raise AuthExpired("Your session expired. Please sign in again.")
+    if response.is_error:
+        raise RuntimeError(str(_error_detail(response)))
+
+
+def get_models(token: str | None = None) -> ModelsResponse:
     """The API's models, or a single fallback entry when the API cannot be reached."""
     try:
-        response = httpx.get(_url("/models"), timeout=config.MODELS_TIMEOUT_SECONDS)
+        response = httpx.get(
+            _url("/models"), headers=_headers(token), timeout=config.MODELS_TIMEOUT_SECONDS
+        )
+        if response.status_code == 401:
+            raise AuthExpired("Your session expired. Please sign in again.")
         response.raise_for_status()
         return ModelsResponse.model_validate(response.json())
     except (httpx.HTTPError, ValidationError, ValueError):
@@ -74,12 +133,17 @@ def _error_detail(response: httpx.Response) -> Any:
         return response.text
 
 
-def call_api(question: str, model: ModelInfo, force_bad_first_response: bool) -> AskResponse:
+def call_api(
+    question: str, model: ModelInfo, force_bad_first_response: bool, token: str | None = None
+) -> AskResponse:
     response = httpx.post(
         _url("/ask"),
         json=_payload(question, model, force_bad_first_response),
+        headers=_headers(token),
         timeout=config.ASK_TIMEOUT_SECONDS,
     )
+    if response.status_code == 401:
+        raise AuthExpired("Your session expired. Please sign in again.")
     if response.is_error:
         raise RuntimeError(f"API error ({response.status_code}): {_error_detail(response)}")
     try:
@@ -93,6 +157,7 @@ def call_streaming_api(
     model: ModelInfo,
     force_bad_first_response: bool,
     render_answer: Callable[[str], Any],
+    token: str | None = None,
 ) -> AskResponse:
     answer = ""
     result = None
@@ -101,8 +166,11 @@ def call_streaming_api(
         "POST",
         _url("/ask"),
         json={**_payload(question, model, force_bad_first_response), "stream": True},
+        headers=_headers(token),
         timeout=config.ASK_TIMEOUT_SECONDS,
     ) as response:
+        if response.status_code == 401:
+            raise AuthExpired("Your session expired. Please sign in again.")
         if response.is_error:
             response.read()
             raise RuntimeError(f"API error ({response.status_code}): {_error_detail(response)}")

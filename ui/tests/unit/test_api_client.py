@@ -186,3 +186,72 @@ class TestCallStreamingApi(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAuthenticatedCalls(unittest.TestCase):
+    @respx.mock
+    def test_token_is_sent_on_models_ask_and_stream(self):
+        models = respx.get(f"{BASE}/models").respond(json={"models": []})
+        ask = respx.post(f"{BASE}/ask").respond(json=RESULT)
+
+        api_client.get_models(token="tok")
+        api_client.call_api("hi", GPT, False, token="tok")
+        ask.respond(text=sse(("done", RESULT)), headers={"content-type": "text/event-stream"})
+        api_client.call_streaming_api("hi", GPT, False, lambda _: None, token="tok")
+
+        self.assertEqual(models.calls.last.request.headers["authorization"], "Bearer tok")
+        self.assertEqual(ask.calls[0].request.headers["authorization"], "Bearer tok")
+        self.assertEqual(ask.calls[1].request.headers["authorization"], "Bearer tok")
+
+    @respx.mock
+    def test_no_token_means_no_authorization_header(self):
+        models = respx.get(f"{BASE}/models").respond(json={"models": []})
+
+        api_client.get_models()
+
+        self.assertNotIn("authorization", models.calls.last.request.headers)
+
+    @respx.mock
+    def test_401_raises_auth_expired_on_every_call(self):
+        respx.get(f"{BASE}/models").respond(401, json={"detail": "x"})
+        respx.post(f"{BASE}/ask").respond(401, json={"detail": "x"})
+        respx.post(f"{BASE}/auth/change-password").respond(401, json={"detail": "x"})
+
+        calls = [
+            lambda: api_client.get_models(token="t"),
+            lambda: api_client.call_api("hi", GPT, False, token="t"),
+            lambda: api_client.call_streaming_api("hi", GPT, False, lambda _: None, token="t"),
+            lambda: api_client.change_password("a", "b", "t"),
+        ]
+        for call in calls:
+            with self.assertRaises(api_client.AuthExpired):
+                call()
+
+    @respx.mock
+    def test_login_and_refresh_return_token_pairs(self):
+        pair = {"access_token": "a", "refresh_token": "r", "must_change_password": True}
+        respx.post(f"{BASE}/auth/login").respond(json=pair)
+        respx.post(f"{BASE}/auth/refresh").respond(json=pair)
+
+        self.assertTrue(api_client.login("a@b.co", "pw").must_change_password)
+        self.assertEqual(api_client.refresh("r").access_token, "a")
+
+    @respx.mock
+    def test_auth_errors_surface_the_api_detail(self):
+        respx.post(f"{BASE}/auth/login").respond(
+            401, json={"detail": "Incorrect email or password."}
+        )
+        respx.post(f"{BASE}/auth/change-password").respond(400, json={"detail": "Wrong current"})
+
+        with self.assertRaisesRegex(RuntimeError, "Incorrect email"):
+            api_client.login("a@b.co", "pw")
+        with self.assertRaisesRegex(RuntimeError, "Wrong current"):
+            api_client.change_password("a", "b", "t")
+
+    @respx.mock
+    def test_change_password_succeeds_on_204(self):
+        route = respx.post(f"{BASE}/auth/change-password").respond(204)
+
+        api_client.change_password("old", "new", "tok")
+
+        self.assertEqual(route.calls.last.request.headers["authorization"], "Bearer tok")

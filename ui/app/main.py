@@ -4,8 +4,10 @@ import httpx
 import streamlit as st
 
 from app.clients.api_client import AskResponse, call_api, call_streaming_api
+from app.components.auth import render_change_password, render_login
 from app.components.chat import render_hero, render_metadata, render_sidebar
 from app.components.styles import apply_styles
+from app.state import auth
 from app.state.session import init_messages
 
 st.set_page_config(
@@ -16,6 +18,13 @@ st.set_page_config(
 )
 apply_styles()
 init_messages()
+
+if not auth.is_signed_in():
+    render_login()
+    st.stop()
+if auth.must_change_password():
+    render_change_password()
+    st.stop()
 
 selected_model, stream_responses, force_bad_first_response = render_sidebar()
 
@@ -37,12 +46,18 @@ if question := st.chat_input("Ask a question..."):
         try:
             if stream_responses:
                 answer_placeholder = st.empty()
-                result = call_streaming_api(
-                    question, selected_model, force_bad_first_response, answer_placeholder.markdown
+                result = auth.call_authenticated(
+                    call_streaming_api,
+                    question,
+                    selected_model,
+                    force_bad_first_response,
+                    answer_placeholder.markdown,
                 )
             else:
                 with st.spinner("Thinking..."):
-                    result = call_api(question, selected_model, force_bad_first_response)
+                    result = auth.call_authenticated(
+                        call_api, question, selected_model, force_bad_first_response
+                    )
         except (httpx.HTTPError, RuntimeError) as exc:
             st.error(str(exc))
         else:

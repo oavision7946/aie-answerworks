@@ -2,6 +2,7 @@ import streamlit as st
 
 from app import config
 from app.clients.api_client import AskResponse, ModelInfo, fallback_model, get_models
+from app.state import auth
 from app.state.session import reset_messages
 
 
@@ -21,10 +22,15 @@ def render_sidebar() -> tuple[ModelInfo, bool, bool]:
         if st.button("＋  New chat", use_container_width=True):
             reset_messages()
             st.rerun()
+        st.markdown('<div class="side-label">Account</div>', unsafe_allow_html=True)
+        st.caption(f"Signed in as {auth.email()}")
+        if st.button("Sign out", use_container_width=True):
+            auth.sign_out()
+            st.rerun()
         st.markdown('<div class="side-label">Connection</div>', unsafe_allow_html=True)
         st.caption(config.API_BASE_URL)
         st.markdown('<div class="side-label">Model</div>', unsafe_allow_html=True)
-        available = get_models()
+        available = auth.call_authenticated(get_models)
         models = available.models
         if not models:
             st.warning("The API has no models available. Check its provider configuration.")
