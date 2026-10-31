@@ -1,65 +1,23 @@
-"""Drives the real Streamlit page (app/main.py) with streamlit's AppTest harness."""
+"""Drives the Ask view (question-answer) with streamlit's AppTest harness."""
 
 import json
 import unittest
-from pathlib import Path
-from unittest.mock import patch
 
 import httpx
 import respx
-from streamlit.testing.v1 import AppTest
 
 from app import config
+from tests.app.helpers import ASK, ONE, RESULT, TWO, new_app
 
-MAIN = str(Path(__file__).resolve().parents[2] / "app" / "main.py")
 BASE = config.API_BASE_URL.rstrip("/")
 
 
-def models_payload(*models, default=0):
-    """models: (provider, id, label) tuples; `default` indexes the API's default model."""
-    infos = [{"provider": p, "id": i, "label": label} for p, i, label in models]
-    return {
-        "default_provider": infos[default]["provider"],
-        "default_model": infos[default]["id"],
-        "models": infos,
-    }
-
-
-TWO = models_payload(
-    ("openai", "gpt-4o", "GPT-4o"), ("anthropic", "claude-x", "Claude X"), default=1
-)
-ONE = models_payload(("openai", "gpt-4o-mini", "GPT-4o mini"))
-RESULT = {
-    "answer": "What RAG is.",
-    "provider": "openai",
-    "model": "gpt-4o",
-    "tokens_used": 1234,
-    "latency_ms": 5,
-    "cost_usd": 0.000123,
-}
-
-
-SIGNED_IN = {
-    "email": "ana@example.com",
-    "access_token": "access-1",
-    "refresh_token": "refresh-1",
-    "must_change_password": False,
-}
-
-
-def new_app(auth=SIGNED_IN) -> AppTest:
-    at = AppTest.from_file(MAIN, default_timeout=10)
-    if auth is not None:
-        at.session_state["auth"] = dict(auth)
-    return at
-
-
-class TestMainPage(unittest.TestCase):
+class TestAskPage(unittest.TestCase):
     @respx.mock
     def test_initial_render_shows_hero_and_models(self):
         respx.get(f"{BASE}/models").respond(json=TWO)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
 
         self.assertFalse(at.exception)
         self.assertEqual(at.selectbox[0].options, ["GPT-4o · openai", "Claude X · anthropic"])
@@ -71,7 +29,7 @@ class TestMainPage(unittest.TestCase):
     def test_models_endpoint_down_falls_back_to_default_model(self):
         respx.get(f"{BASE}/models").mock(side_effect=httpx.ConnectError("down"))
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
 
         self.assertFalse(at.exception)
         self.assertEqual(at.selectbox[0].options, [config.FALLBACK_MODEL])
@@ -82,7 +40,7 @@ class TestMainPage(unittest.TestCase):
         payload = {**TWO, "default_model": "ghost"}
         respx.get(f"{BASE}/models").respond(json=payload)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
 
         self.assertEqual(at.selectbox[0].value, "openai/gpt-4o")
 
@@ -90,7 +48,7 @@ class TestMainPage(unittest.TestCase):
     def test_api_with_no_models_shows_warning_and_uses_fallback(self):
         respx.get(f"{BASE}/models").respond(json={"models": []})
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
 
         self.assertFalse(at.exception)
         self.assertEqual(len(at.sidebar.warning), 1)
@@ -101,7 +59,7 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=TWO)
         ask = respx.post(f"{BASE}/ask").respond(json=RESULT)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.selectbox[0].select("openai/gpt-4o")
         at.chat_input[0].set_value("What is RAG?").run()
 
@@ -131,7 +89,7 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=ONE)
         respx.post(f"{BASE}/ask").respond(json={**RESULT, "cost_usd": None})
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.chat_input[0].set_value("hi").run()
 
         self.assertIn("n/a", " ".join(m.value for m in at.markdown))
@@ -141,7 +99,7 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=ONE)
         ask = respx.post(f"{BASE}/ask").respond(json=RESULT)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.checkbox[1].check()  # [0] = stream, [1] = force bad first response
         at.chat_input[0].set_value("hi").run()
 
@@ -157,7 +115,7 @@ class TestMainPage(unittest.TestCase):
         )
         ask = respx.post(f"{BASE}/ask").respond(200, text=body)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.checkbox[0].check()
         at.chat_input[0].set_value("hi").run()
 
@@ -170,7 +128,7 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=ONE)
         respx.post(f"{BASE}/ask").respond(502, json={"detail": "The AI service is down."})
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.chat_input[0].set_value("hi").run()
 
         self.assertFalse(at.exception)
@@ -183,7 +141,7 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=ONE)
         respx.post(f"{BASE}/ask").mock(side_effect=httpx.ConnectError("refused"))
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.chat_input[0].set_value("hi").run()
 
         self.assertFalse(at.exception)
@@ -194,23 +152,13 @@ class TestMainPage(unittest.TestCase):
         respx.get(f"{BASE}/models").respond(json=ONE)
         respx.post(f"{BASE}/ask").respond(json=RESULT)
 
-        at = new_app().run()
+        at = new_app(view=ASK).run()
         at.chat_input[0].set_value("hi").run()
         self.assertEqual(len(at.session_state.messages), 2)
         at.button[0].click().run()
 
         self.assertEqual(at.session_state.messages, [])
         self.assertEqual(len(at.chat_message), 0)
-
-    @respx.mock
-    def test_api_url_is_displayed_in_sidebar(self):
-        respx.get(f"{BASE}/models").respond(json=ONE)
-        with patch.object(config, "API_BASE_URL", "http://example.test:9"):
-            with respx.mock:
-                respx.get("http://example.test:9/models").respond(json=ONE)
-                at = new_app().run()
-
-        self.assertIn("http://example.test:9", [c.value for c in at.sidebar.caption])
 
 
 if __name__ == "__main__":

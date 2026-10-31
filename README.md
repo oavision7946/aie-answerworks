@@ -2,7 +2,7 @@
 
 One interface (API + UI) for working with several AI models, with retrieval-augmented generation (RAG) so answers can be grounded in your own documents.
 
-> **Project status: early development.** The model layer, admin-created accounts with login, saved conversations (API) and a chat UI work today; the UI does not use saved conversations yet, and RAG is planned and not built. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
+> **Project status: early development.** The model layer, admin-created accounts with login, saved conversations, and a web UI with chat, conversation history, question-answer and user administration work today; RAG is planned and not built. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
 
 FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration in YAML, secrets in `.env`.
 
@@ -13,13 +13,13 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - **Saved conversations:** `POST /chat` sends a message into a conversation (or starts a new one) and the model sees the earlier messages. Conversations and messages are stored in PostgreSQL per user, with provider, model, tokens, latency and cost on every reply, and nobody else can read, rename or delete them. List, read, rename and delete through `/conversations`. Streaming works here too.
 - **Question-answer endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
 - **Transparent usage:** every answer reports provider, model, token count, latency and estimated cost. Cost is `null` for models with no pricing configured.
-- **Chat UI:** a Streamlit app with a sign-in screen, a forced password-change screen, a model picker, a streaming toggle and per-answer usage details. It works in question-answer mode (`/ask`, no history); a chat mode with saved conversations is next.
+- **Web UI:** a Streamlit app with sign-in, a forced password-change screen and four pages: **Chat** (saved conversations with a model picker, streaming and per-answer usage), **Conversations** (open, rename, delete), **Ask** (one-off question-answer, nothing saved) and, for admins only, **Admin · Users** (create accounts, change roles, deactivate, reset passwords).
 - **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
 ### Not built yet
 
-A UI for saved conversations, an admin page in the UI (users are managed through the API for now), and RAG (document upload, shared corpora, retrieval with citations). The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations).
+RAG (document upload, shared corpora, retrieval with citations) and its UI pages. The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
 
 ## Prerequisites
 
@@ -320,6 +320,75 @@ Not even an admin can read another user's conversations through these endpoints.
 
 Same as the demos above. Deleting a conversation also deletes its messages; stopping the services and `make db-down` is all that is left.
 
+## Demo: the web app (chat, conversations, admin)
+
+The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 3 of either demo above (database, `make migrate`, first admin, `make run-api`), then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
+
+**1. Sign in and find your way around**
+
+Sign in as the admin. The sidebar lists the pages: **Chat**, **Conversations**, **Ask** and **Admin · Users**, and under them your email, **Sign out** and the API address. Admins see "(admin)" next to their email. A regular user does not get the Admin page at all.
+
+Same from the API: `GET /auth/me` returns your `role`, which is how the UI decides what to list:
+
+```bash
+login() {
+  curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
+}
+TOKEN=$(login admin@example.com 'admin passphrase 1')
+curl -s localhost:8000/auth/me -H "Authorization: Bearer $TOKEN"
+```
+
+**2. Chat**
+
+On **Chat**, send "My favourite colour is green. Please remember it.", then "Which colour did I say?". Under each answer you see the model, tokens and estimated cost. Pick another model in the sidebar to change who answers the next message; tick **Stream responses** to watch the answer arrive in pieces. With the fake provider the answers just echo; with real keys the second answer mentions green because the first message is sent along with it. **＋ New chat** starts a fresh conversation.
+
+Same from the API: the [saved conversations demo](#demo-saved-conversations-api), steps 2 to 5 (`POST /chat`, with `"stream": true` for streaming).
+
+**3. Conversations**
+
+Open **Conversations**. Your chat is listed with its model and last activity. Click **Open** to go back to Chat with the whole history loaded and keep talking; **Rename** changes the title; **Delete** asks for confirmation and removes the conversation with its messages.
+
+Same from the API:
+
+```bash
+curl -s localhost:8000/conversations -H "Authorization: Bearer $TOKEN"                    # the list
+curl -s localhost:8000/conversations/<id> -H "Authorization: Bearer $TOKEN"               # Open
+curl -s -X PATCH localhost:8000/conversations/<id> -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"title": "Colours"}'                            # Rename
+curl -s -X DELETE localhost:8000/conversations/<id> -H "Authorization: Bearer $TOKEN"     # Delete
+```
+
+**4. Ask (question-answer)**
+
+Open **Ask** and ask a question. Each question is answered on its own: no history is sent, nothing is saved, and it never shows up under Conversations. Use it for one-off questions or to compare models on the same prompt. (The **Tests** box in its sidebar forces a bad first answer to show the API's retry.)
+
+Same from the API:
+
+```bash
+curl -s localhost:8000/ask -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"question": "What is RAG?"}'
+```
+
+**5. Admin · Users**
+
+Open **Admin · Users**. The table lists every account with its role, whether it is active, and whether a password change is pending. Under **Add a user**, enter an email, a temporary password (12 to 128 characters) and a role, then **Create user**. Under **Manage a user**, pick someone to change their role, deactivate them, or set a new temporary password. Try deactivating yourself: the API refuses, and the page shows its message.
+
+Same from the API: see [Adding users (admin)](#adding-users-admin) and step 7 of the first demo.
+
+**6. See it as a regular user**
+
+Sign out and sign in as the user you created. The app first asks for a new password. Then there is no Admin page, **Conversations** is empty (conversations are private), and the admin API refuses the same token:
+
+```bash
+ANA=$(login ana@example.com '<ana new password>')
+curl -s localhost:8000/admin/users -H "Authorization: Bearer $ANA"     # 403
+```
+
+**7. Clean up**
+
+Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy` to delete the data).
+
 ## API access in short
 
 | Endpoint | Who | Purpose |
@@ -368,7 +437,7 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | `api/` | FastAPI backend and its tests; see [api/README.md](api/README.md) |
 | `ui/` | Streamlit frontend and its tests; see [ui/README.md](ui/README.md) |
 | `config/` | Non-secret YAML configuration |
-| `docs/` | Documentation: authentication, authorization, conversations, data model, admin guide |
+| `docs/` | Documentation: authentication, authorization, conversations, data model, UI, admin guide |
 | `Makefile` | Install, run, test, lint, migrate, create-admin and local-database commands |
 
 `api/` and `ui/` are separate uv projects with their own environments, which is why `make install` syncs both.
@@ -382,8 +451,8 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | 3 | Provider layer: Anthropic, OpenAI, local and fake providers | Done |
 | 4 | Auth and users: login, JWT, roles, admin-created accounts | Done |
 | 5 | Conversations and chat: persistence and streaming (API) | Done |
-| 6 | UI: conversations and admin pages (login screen done) | Next |
-| 7 | RAG: documents, shared corpora, retrieval with citations | Planned |
+| 6 | UI: chat, conversations, question-answer and admin users pages | Done |
+| 7 | RAG: documents, shared corpora, retrieval with citations | Next |
 | 8 | Docker Compose, docs site, end-to-end tests | Planned |
 
 ## License

@@ -7,6 +7,7 @@ import streamlit as st
 
 from app.clients import api_client
 from app.clients.api_client import AuthExpired, TokenPair
+from app.state import chat as chat_state
 
 _KEY = "auth"
 _NOTICE = "auth_notice"
@@ -24,13 +25,24 @@ def must_change_password() -> bool:
     return bool(st.session_state[_KEY]["must_change_password"])
 
 
+def is_admin() -> bool:
+    return bool(st.session_state[_KEY].get("role") == "admin")
+
+
+def require_sign_in() -> None:
+    """Views call this first: a page must never render for an anonymous session."""
+    if not is_signed_in():
+        st.stop()
+
+
 def access_token() -> str:
     return str(st.session_state[_KEY]["access_token"])
 
 
-def store(pair: TokenPair, user_email: str) -> None:
+def store(pair: TokenPair, user_email: str, role: str = "user") -> None:
     st.session_state[_KEY] = {
         "email": user_email,
+        "role": role,
         "access_token": pair.access_token,
         "refresh_token": pair.refresh_token,
         "must_change_password": pair.must_change_password,
@@ -39,12 +51,18 @@ def store(pair: TokenPair, user_email: str) -> None:
 
 def sign_in(user_email: str, password: str) -> None:
     """Raises RuntimeError with a user-safe message when the API refuses or is unreachable."""
-    store(api_client.login(user_email, password), user_email.strip().lower())
+    pair = api_client.login(user_email, password)
+    try:
+        role = api_client.get_me(pair.access_token).role
+    except RuntimeError:
+        role = "user"  # the server enforces roles; this only decides which pages are listed
+    store(pair, user_email.strip().lower(), role)
 
 
 def sign_out(notice: str | None = None) -> None:
     st.session_state.pop(_KEY, None)
     st.session_state["messages"] = []
+    chat_state.reset()
     if notice:
         st.session_state[_NOTICE] = notice
 
@@ -59,7 +77,7 @@ def _refresh() -> bool:
         pair = api_client.refresh(st.session_state[_KEY]["refresh_token"])
     except RuntimeError:
         return False
-    store(pair, email())
+    store(pair, email(), str(st.session_state[_KEY].get("role", "user")))
     return True
 
 

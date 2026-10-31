@@ -7,7 +7,7 @@ import httpx
 import respx
 
 from app import config
-from tests.app.test_main_page import ONE, RESULT, SIGNED_IN, new_app
+from tests.app.helpers import CHAT_RESULT, ME_USER, ONE, SIGNED_IN, new_app
 
 BASE = config.API_BASE_URL.rstrip("/")
 PAIR = {"access_token": "access-2", "refresh_token": "refresh-2", "must_change_password": False}
@@ -40,6 +40,7 @@ class TestLogin(unittest.TestCase):
     @respx.mock
     def test_successful_login_shows_chat_and_sends_token(self):
         login = respx.post(f"{BASE}/auth/login").respond(json=PAIR)
+        respx.get(f"{BASE}/auth/me").respond(json=ME_USER)
         models = respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=None).run()
@@ -103,7 +104,7 @@ class TestSignOut(unittest.TestCase):
     @respx.mock
     def test_sign_out_clears_session_and_chat(self):
         respx.get(f"{BASE}/models").respond(json=ONE)
-        respx.post(f"{BASE}/ask").respond(json=RESULT)
+        respx.post(f"{BASE}/chat").respond(json=CHAT_RESULT)
 
         at = new_app().run()
         at.chat_input[0].set_value("hi").run()
@@ -112,6 +113,8 @@ class TestSignOut(unittest.TestCase):
         self.assertEqual([t.label for t in at.text_input], ["Email", "Password"])
         self.assertNotIn("auth", at.session_state)
         self.assertEqual(at.session_state.messages, [])
+        self.assertEqual(at.session_state.chat["messages"], [])
+        self.assertIsNone(at.session_state.chat["conversation_id"])
 
 
 class TestForcedPasswordChange(unittest.TestCase):
@@ -137,6 +140,7 @@ class TestForcedPasswordChange(unittest.TestCase):
     def test_successful_change_signs_in_with_new_password(self):
         change = respx.post(f"{BASE}/auth/change-password").respond(204)
         login = respx.post(f"{BASE}/auth/login").respond(json=PAIR)
+        respx.get(f"{BASE}/auth/me").respond(json=ME_USER)
         respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=self.PENDING).run()
@@ -241,10 +245,10 @@ class TestExpiredTokens(unittest.TestCase):
     @respx.mock
     def test_expired_token_when_asking_refreshes_and_retries(self):
         respx.get(f"{BASE}/models").respond(json=ONE)
-        ask = respx.post(f"{BASE}/ask").mock(
+        ask = respx.post(f"{BASE}/chat").mock(
             side_effect=[
                 httpx.Response(401, json={"detail": "expired"}),
-                httpx.Response(200, json=RESULT),
+                httpx.Response(200, json=CHAT_RESULT),
             ]
         )
         respx.post(f"{BASE}/auth/refresh").respond(json=PAIR)

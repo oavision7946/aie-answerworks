@@ -26,7 +26,7 @@ def render_login() -> None:
     with st.form("login"):
         user_email = st.text_input("Email", autocomplete="username")
         password = st.text_input("Password", type="password", autocomplete="current-password")
-        submitted = st.form_submit_button("Sign in", use_container_width=True)
+        submitted = st.form_submit_button("Sign in", width="stretch")
     if submitted:
         if not user_email.strip() or not password:
             st.error("Enter your email and password.")
@@ -56,7 +56,7 @@ def render_change_password() -> None:
             "New password", type="password", help=f"At least {MIN_PASSWORD_LENGTH} characters."
         )
         confirm = st.text_input("Confirm new password", type="password")
-        submitted = st.form_submit_button("Change password", use_container_width=True)
+        submitted = st.form_submit_button("Change password", width="stretch")
     if st.button("Sign out"):
         auth.sign_out()
         st.rerun()

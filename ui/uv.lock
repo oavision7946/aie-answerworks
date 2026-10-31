@@ -68,7 +68,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "streamlit", specifier = ">=1.40" },
+    { name = "streamlit", specifier = ">=1.50" },
 ]
 provides-extras = ["dev"]
 

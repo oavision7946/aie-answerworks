@@ -1,76 +1,19 @@
 import streamlit as st
 
-from app import config
-from app.clients.api_client import AskResponse, ModelInfo, fallback_model, get_models
-from app.state import auth
-from app.state.session import reset_messages
+from app.clients.api_client import AskResponse
 
 
-def render_sidebar() -> tuple[ModelInfo, bool, bool]:
-    """Draw the sidebar; return (selected_model, stream_responses, force_bad_first_response)."""
-    with st.sidebar:
-        st.markdown(
-            """
-            <div class="brand">
-                <div class="brand-mark">◌</div>
-                <div class="brand-name">AnswerWorks</div>
-                <div class="brand-copy">Many models, one workspace.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("＋  New chat", use_container_width=True):
-            reset_messages()
-            st.rerun()
-        st.markdown('<div class="side-label">Account</div>', unsafe_allow_html=True)
-        st.caption(f"Signed in as {auth.email()}")
-        if st.button("Sign out", use_container_width=True):
-            auth.sign_out()
-            st.rerun()
-        st.markdown('<div class="side-label">Connection</div>', unsafe_allow_html=True)
-        st.caption(config.API_BASE_URL)
-        st.markdown('<div class="side-label">Model</div>', unsafe_allow_html=True)
-        available = auth.call_authenticated(get_models)
-        models = available.models
-        if not models:
-            st.warning("The API has no models available. Check its provider configuration.")
-            models = [fallback_model()]
-        by_key = {m.key: m for m in models}
-        default_key = next(
-            (
-                m.key
-                for m in models
-                if m.provider == available.default_provider and m.id == available.default_model
-            ),
-            models[0].key,
-        )
-        selected_key = st.selectbox(
-            "Model",
-            list(by_key),
-            index=list(by_key).index(default_key),
-            format_func=lambda key: by_key[key].display,
-            label_visibility="collapsed",
-        )
-        selected_model = by_key[selected_key]
-        stream_responses = st.checkbox("Stream responses", value=False)
-        with st.expander("Tests"):
-            force_bad_first_response = st.checkbox(
-                "Force a bad first response",
-                help="The API will reject an empty first answer with Pydantic, then retry once.",
-            )
-        st.markdown('<div class="side-label">What to ask</div>', unsafe_allow_html=True)
-        st.caption("Ask anything. Pick a model and compare answers, cost and token use.")
-    return selected_model, stream_responses, force_bad_first_response
-
-
-def render_hero() -> None:
+def render_hero(kicker: str = "AI chat with RAG", blurb: str | None = None) -> None:
+    blurb = blurb or (
+        "Ask a question and choose the model that answers it. Answers can be grounded "
+        "in your own documents."
+    )
     st.markdown(
-        """
+        f"""
         <div class="hero">
-            <div class="hero-kicker">AI chat with RAG</div>
+            <div class="hero-kicker">{kicker}</div>
             <h1>What would you like to know?</h1>
-            <p>Ask a question and choose the model that answers it. Answers can be grounded
-            in your own documents.</p>
+            <p>{blurb}</p>
         </div>
         """,
         unsafe_allow_html=True,

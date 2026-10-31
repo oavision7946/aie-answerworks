@@ -43,6 +43,10 @@ Temporary passwords follow the same length rules as normal ones (12 to 128 chara
 
 Emails are stored lowercased. Creating a duplicate returns 409.
 
+## From the web app
+
+Signed in as an admin, the **Admin · Users** page does the same without curl: the table lists accounts, **Add a user** creates one with a temporary password and a role, and **Manage a user** changes the role, deactivates or reactivates an account, or resets its password. The API's messages (for example the self-lockout rule) are shown on the page.
+
 ## Deactivate a user
 
 ```bash

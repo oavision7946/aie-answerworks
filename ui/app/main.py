@@ -1,12 +1,11 @@
-"""AnswerWorks chat page. Run with: streamlit run app/main.py"""
+"""AnswerWorks entry point: sign-in gate, then page navigation. Run: streamlit run app/main.py"""
 
-import httpx
 import streamlit as st
 
-from app.clients.api_client import AskResponse, call_api, call_streaming_api
+from app.components.account import render_account
 from app.components.auth import render_change_password, render_login
-from app.components.chat import render_hero, render_metadata, render_sidebar
 from app.components.styles import apply_styles
+from app.navigation import visible_pages
 from app.state import auth
 from app.state.session import init_messages
 
@@ -26,44 +25,10 @@ if auth.must_change_password():
     render_change_password()
     st.stop()
 
-selected_model, stream_responses, force_bad_first_response = render_sidebar()
-
-if not st.session_state.messages:
-    render_hero()
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message["role"] == "assistant" and message.get("response"):
-            render_metadata(AskResponse.model_validate(message["response"]))
-
-if question := st.chat_input("Ask a question..."):
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
-
-    with st.chat_message("assistant"):
-        try:
-            if stream_responses:
-                answer_placeholder = st.empty()
-                result = auth.call_authenticated(
-                    call_streaming_api,
-                    question,
-                    selected_model,
-                    force_bad_first_response,
-                    answer_placeholder.markdown,
-                )
-            else:
-                with st.spinner("Thinking..."):
-                    result = auth.call_authenticated(
-                        call_api, question, selected_model, force_bad_first_response
-                    )
-        except (httpx.HTTPError, RuntimeError) as exc:
-            st.error(str(exc))
-        else:
-            if not stream_responses:
-                st.markdown(result.answer)
-            render_metadata(result)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": result.answer, "response": result.model_dump()}
-            )
+pages = [
+    st.Page(spec.path, title=spec.title, icon=spec.icon, default=spec.default)
+    for spec in visible_pages(auth.is_admin())
+]
+current = st.navigation(pages)
+render_account()
+current.run()
