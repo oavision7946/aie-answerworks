@@ -62,7 +62,7 @@ Stop `make run-api` and `make run-ui` with Ctrl+C in their terminals, then:
 ```bash
 make db-down              # stop the database, keeping its data
 make db-destroy           # or delete the container and its data (you will need `make migrate` and `make create-admin` again)
-make clean                # remove __pycache__, .pytest_cache and the docs build
+make clean                # remove Python and tool caches
 ```
 
 Local files you may want to remove too: `.env` (it holds your keys) and the virtual environments in `api/.venv` and `ui/.venv`. Pass the same `DB_PORT`/`DB_CONTAINER` values to `db-down` and `db-destroy` if you overrode them in `db-up`.
@@ -252,7 +252,7 @@ Create a second user, see the forced password change and try the admin rules exa
 
 **6. Clean up**
 
-Stop both services, then `make db-down` (or `make db-destroy` to delete the data). Remove your keys from `.env` if this is a shared machine.
+Stop both services, then `make db-down` (or `make db-destroy` to delete the data) and `make clean` to remove Python and tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.coverage`). Remove your keys from `.env` if this is a shared machine.
 
 ## Demo: saved conversations (API)
 
@@ -329,7 +329,7 @@ Not even an admin can read another user's conversations through these endpoints.
 
 **8. Clean up**
 
-Same as the demos above. Deleting a conversation also deletes its messages; stopping the services and `make db-down` is all that is left.
+Same as the demos above. Deleting a conversation also deletes its messages; stopping the services, `make db-down` (or `make db-destroy` to delete the data) and `make clean` is all that is left.
 
 ## Demo: the web app (chat, conversations, admin)
 
@@ -398,7 +398,7 @@ curl -s localhost:8000/admin/users -H "Authorization: Bearer $ANA"     # 403
 
 **7. Clean up**
 
-Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy` to delete the data).
+Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy` to delete the data), then `make clean` to remove caches.
 
 ## API access in short
 
