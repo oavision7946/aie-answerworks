@@ -11,15 +11,15 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - **Several providers behind one interface:** Anthropic, OpenAI, and any OpenAI-compatible server (Ollama, vLLM, llama.cpp, ...). Providers and models are declared in [config/providers.yaml](config/providers.yaml); a provider whose API key is missing is skipped, so you only need keys for the ones you use.
 - **Login and accounts:** every endpoint except `/health` and `/auth/*` requires a bearer token. There is no self-registration: an admin bootstraps with `make create-admin` and then creates accounts through the admin API. Passwords are hashed with Argon2, sessions use short-lived JWT access tokens plus refresh tokens, accounts can be deactivated, and a new user must choose their own password before using anything else. Roles are `admin` and `user`.
 - **Saved conversations:** `POST /chat` sends a message into a conversation (or starts a new one) and the model sees the earlier messages. Conversations and messages are stored in PostgreSQL per user, with provider, model, tokens, latency and cost on every reply, and nobody else can read, rename or delete them. List, read, rename and delete through `/conversations`. Streaming works here too.
-- **Stateless question endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
+- **Question-answer endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
 - **Transparent usage:** every answer reports provider, model, token count, latency and estimated cost. Cost is `null` for models with no pricing configured.
-- **Chat UI:** a Streamlit app with a sign-in screen, a forced password-change screen, a model picker, a streaming toggle and per-answer usage details. It still uses the stateless `/ask`; browsing and resuming saved conversations in the UI comes next.
+- **Chat UI:** a Streamlit app with a sign-in screen, a forced password-change screen, a model picker, a streaming toggle and per-answer usage details. It works in question-answer mode (`/ask`, no history); a chat mode with saved conversations is next.
 - **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
 ### Not built yet
 
-A UI for saved conversations, an admin page in the UI (users are managed through the API for now), and RAG (document upload, shared corpora, retrieval with citations). The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. `/ask` is a stateless stepping stone: it stays only until the UI moves to `/chat`.
+A UI for saved conversations, an admin page in the UI (users are managed through the API for now), and RAG (document upload, shared corpora, retrieval with citations). The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations).
 
 ## Prerequisites
 
@@ -66,6 +66,27 @@ make clean                # remove __pycache__, .pytest_cache and the docs build
 ```
 
 Local files you may want to remove too: `.env` (it holds your keys) and the virtual environments in `api/.venv` and `ui/.venv`. Pass the same `DB_PORT`/`DB_CONTAINER` values to `db-down` and `db-destroy` if you overrode them in `db-up`.
+
+## Adding users (admin)
+
+There is no sign-up page: an admin creates each account with a temporary password, and the user must replace it at first sign-in. With the API running and the first admin created (`make create-admin`):
+
+```bash
+# 1. Sign in as the admin and keep the access token
+TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"<admin password>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+
+# 2. Create the user (temporary password: 12 to 128 characters; "role" is optional, "user" by default)
+curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"email":"ana@example.com","temporary_password":"<temporary password>"}'
+
+# 3. See everyone, or deactivate someone (use the "id" from the list)
+curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN"
+curl -s -X PATCH localhost:8000/admin/users/<id> -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"is_active": false}'
+```
+
+Give the temporary password to the user over a secure channel. The same calls work from the interactive docs at http://localhost:8000/docs (sign in with `POST /auth/login`, click **Authorize**). More in the [admin guide](docs/admin-guide.md).
 
 ## Demo: run the whole system without API keys
 

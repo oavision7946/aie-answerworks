@@ -17,8 +17,8 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
   `tokens_used`, `latency_ms` and `cost_usd` (`null` when the model has no pricing). Omit
   `provider`/`model` for the default. `"stream": true` returns server-sent events
   (`delta`, `done`, `error`). Transient provider errors are retried with exponential backoff; an
-  invalid (blank) answer is retried once. `/ask` is a stateless stopgap, kept only until the UI
-  moves to `/chat`.
+  invalid (blank) answer is retried once. `/ask` is the stateless question-answer mode: nothing is stored.
+  Use `/chat` for conversations; both are supported.
 - `POST /chat` – `{message, conversation_id?, provider?, model?, stream?}` → the answer plus
   `conversation_id` and `message_id`. Without `conversation_id` a new conversation is created and
   titled from the message. The model sees the last `chat.history_messages` stored messages
