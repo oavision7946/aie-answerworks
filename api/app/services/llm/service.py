@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from collections.abc import Iterator
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -44,12 +45,21 @@ def _complete(resolved: ResolvedModel, messages: list[ChatMessage]) -> Completio
 
 
 def answer_question(request: AskRequest, resolved: ResolvedModel) -> AskResponse:
+    """Ask the model one standalone question."""
+    return complete_answer(
+        [ChatMessage("user", request.question)],
+        resolved,
+        force_bad_first_response=request.force_bad_first_response or request.force_bad,
+    )
+
+
+def complete_answer(
+    messages: list[ChatMessage], resolved: ResolvedModel, force_bad_first_response: bool = False
+) -> AskResponse:
     """Ask the model, validating its output and retrying once on an invalid answer."""
-    messages = [ChatMessage("user", request.question)]
     tokens_used = 0
     cost_usd: float | None = 0.0
     model_output = None
-    force_bad_first_response = request.force_bad_first_response or request.force_bad
     started_at = time.perf_counter()
 
     for attempt in range(2):
@@ -86,9 +96,20 @@ def sse_event(event_type: str, data: dict[str, object]) -> str:
 
 def stream_answer(request: AskRequest, resolved: ResolvedModel) -> Iterator[str]:
     """Server-sent events: `delta` per chunk, then `done` (or `error`)."""
+    events = stream_events(
+        [ChatMessage("user", request.question)],
+        resolved,
+        force_bad_first_response=request.force_bad_first_response or request.force_bad,
+    )
+    for event_type, data in events:
+        yield sse_event(event_type, data)
+
+
+def stream_events(
+    messages: list[ChatMessage], resolved: ResolvedModel, force_bad_first_response: bool = False
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield (event, data) pairs: `delta` per chunk, then one `done` (an AskResponse) or `error`."""
     started_at = time.perf_counter()
-    force_bad_first_response = request.force_bad_first_response or request.force_bad
-    messages = [ChatMessage("user", request.question)]
     provider = resolved.provider
     max_attempts = resolved.request.max_attempts
 
@@ -100,13 +121,13 @@ def stream_answer(request: AskRequest, resolved: ResolvedModel) -> Iterator[str]
                 if isinstance(event, TextDelta):
                     answer_parts.append(event.content)
                     if not (force_bad_first_response and attempt == 0):
-                        yield sse_event("delta", {"content": event.content})
+                        yield "delta", {"content": event.content}
                 elif isinstance(event, StreamEnd):
                     usage = event.usage
 
             if force_bad_first_response and attempt == 0:
                 logger.warning("Streaming response was deliberately rejected by the test control")
-                yield sse_event("error", {"detail": UNUSABLE})
+                yield "error", {"detail": UNUSABLE}
                 return
 
             try:
@@ -117,14 +138,14 @@ def stream_answer(request: AskRequest, resolved: ResolvedModel) -> Iterator[str]
                 )
                 if attempt + 1 < max_attempts:
                     continue
-                yield sse_event("error", {"detail": UNUSABLE})
+                yield "error", {"detail": UNUSABLE}
                 return
 
             if usage is None:
                 logger.error(
                     "Streaming response from %s contained no usage metadata", provider.name
                 )
-                yield sse_event("error", {"detail": INCOMPLETE})
+                yield "error", {"detail": INCOMPLETE}
                 return
 
             completion = AskResponse(
@@ -135,7 +156,7 @@ def stream_answer(request: AskRequest, resolved: ResolvedModel) -> Iterator[str]
                 latency_ms=int((time.perf_counter() - started_at) * 1000),
                 cost_usd=compute_cost_usd(resolved.model.pricing, usage),
             )
-            yield sse_event("done", completion.model_dump())
+            yield "done", completion.model_dump()
             return
         except Exception as exc:
             transient = isinstance(exc, TransientProviderError)
@@ -147,5 +168,5 @@ def stream_answer(request: AskRequest, resolved: ResolvedModel) -> Iterator[str]
             logger.exception(
                 "Streaming request to %s failed on attempt %d", provider.name, attempt + 1
             )
-            yield sse_event("error", {"detail": UNAVAILABLE if transient else FAILED})
+            yield "error", {"detail": UNAVAILABLE if transient else FAILED}
             return

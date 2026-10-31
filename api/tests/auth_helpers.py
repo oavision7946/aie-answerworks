@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -36,6 +36,8 @@ class AuthTestCase(unittest.TestCase):
         self.engine = create_engine(
             "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
         )
+        # SQLite ignores foreign keys unless asked; PostgreSQL always enforces them.
+        event.listen(self.engine, "connect", lambda conn, _: conn.execute("PRAGMA foreign_keys=ON"))
         Base.metadata.create_all(self.engine)
         self.settings: Settings = load_settings()
         self.settings.env.jwt_secret = self.secret

@@ -28,11 +28,13 @@ def alembic_config(url: str) -> Config:
 class MigrationChecks:
     url: str
 
-    def test_upgrade_creates_users_table_matching_the_models(self):
+    def test_upgrade_creates_tables_matching_the_models(self):
         command.upgrade(alembic_config(self.url), "head")
 
         engine = create_db_engine(self.url)
-        self.assertIn("users", inspect(engine).get_table_names())
+        self.assertTrue(
+            {"users", "conversations", "messages"} <= set(inspect(engine).get_table_names())
+        )
         columns = {c["name"] for c in inspect(engine).get_columns("users")}
         self.assertEqual(
             columns,
@@ -50,9 +52,50 @@ class MigrationChecks:
             diff = compare_metadata(MigrationContext.configure(connection), Base.metadata)
         self.assertEqual(diff, [], "models and migrations have drifted; add a migration")
 
-    def test_downgrade_removes_users_table(self):
+    def test_conversation_columns(self):
+        command.upgrade(alembic_config(self.url), "head")
+
+        inspector = inspect(create_db_engine(self.url))
+        self.assertEqual(
+            {c["name"] for c in inspector.get_columns("conversations")},
+            {
+                "id",
+                "user_id",
+                "title",
+                "provider",
+                "model",
+                "use_rag",
+                "corpus_ids",
+                "created_at",
+                "updated_at",
+            },
+        )
+        self.assertEqual(
+            {c["name"] for c in inspector.get_columns("messages")},
+            {
+                "id",
+                "conversation_id",
+                "role",
+                "content",
+                "provider",
+                "model",
+                "tokens_used",
+                "latency_ms",
+                "cost_usd",
+                "retrieved_chunk_ids",
+                "created_at",
+            },
+        )
+
+    def test_downgrade_removes_tables(self):
         cfg = alembic_config(self.url)
         command.upgrade(cfg, "head")
+        command.downgrade(cfg, "0001")
+        remaining = inspect(create_db_engine(self.url)).get_table_names()
+        self.assertNotIn("conversations", remaining)
+        self.assertNotIn("messages", remaining)
+        self.assertIn("users", remaining)
+
         command.downgrade(cfg, "base")
 
         self.assertNotIn("users", inspect(create_db_engine(self.url)).get_table_names())
@@ -84,8 +127,10 @@ class TestPostgresMigrations(MigrationChecks, unittest.TestCase):
     def _reset(self):
         engine = create_db_engine(self.url)
         with engine.begin() as connection:
-            connection.exec_driver_sql("DROP TABLE IF EXISTS users, alembic_version CASCADE")
-            connection.exec_driver_sql("DROP TYPE IF EXISTS user_role")
+            connection.exec_driver_sql(
+                "DROP TABLE IF EXISTS messages, conversations, users, alembic_version CASCADE"
+            )
+            connection.exec_driver_sql("DROP TYPE IF EXISTS user_role, message_role")
         engine.dispose()
 
 

@@ -21,7 +21,12 @@ def build(providers_yaml_overrides=None, env=None):
         providers_yaml_overrides(data)
         loaded = loaded.model_copy(update={"providers": ProvidersConfig.model_validate(data)})
     with patch.dict(os.environ, env or {}):
-        for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LOCAL_LLM_API_KEY"):
+        for key in (
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_WORKSPACE_ID",
+            "OPENAI_API_KEY",
+            "LOCAL_LLM_API_KEY",
+        ):
             if not (env and key in env):
                 os.environ.pop(key, None)
         return registry.build_registry(loaded)

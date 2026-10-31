@@ -17,8 +17,18 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
   `tokens_used`, `latency_ms` and `cost_usd` (`null` when the model has no pricing). Omit
   `provider`/`model` for the default. `"stream": true` returns server-sent events
   (`delta`, `done`, `error`). Transient provider errors are retried with exponential backoff; an
-  invalid (blank) answer is retried once. `/ask` is a stateless stopgap and goes away once
-  conversations land.
+  invalid (blank) answer is retried once. `/ask` is a stateless stopgap, kept only until the UI
+  moves to `/chat`.
+- `POST /chat` – `{message, conversation_id?, provider?, model?, stream?}` → the answer plus
+  `conversation_id` and `message_id`. Without `conversation_id` a new conversation is created and
+  titled from the message. The model sees the last `chat.history_messages` stored messages
+  (`config/app.yaml`). Without `provider`/`model` the conversation's last model is used, then the
+  default. The exchange is stored only after a successful answer. `"stream": true` returns the same
+  `delta`/`done`/`error` events as `/ask`, with the ids in `done`.
+- `POST /conversations` (optional `title`, `provider`, `model`), `GET /conversations`
+  (`limit`, `offset`; newest activity first), `GET /conversations/{id}` (with messages),
+  `PATCH /conversations/{id}` (`title`), `DELETE /conversations/{id}` (204). Every lookup is
+  scoped to the signed-in user: someone else's conversation answers 404, same as a missing one.
 
 ## Authentication
 
@@ -61,7 +71,8 @@ config, then `ANSWERWORKS_CONFIG_DIR=/path/to/copy make run-api`.
 
 `app/main.py` (app wiring) · `app/api/` (routes, error handlers) · `app/schemas/` · `app/db/repositories/` · `scripts/` ·
 `app/services/llm/` (provider interface, adapters, registry, chat service, retry, cost) · `app/core/config.py` (YAML/.env).
-Tests: `tests/unit`, `tests/contract` (HTTP behaviour).
+Chat: `app/services/chat_service.py` (prompt from history, provider call, persistence), `app/services/conversation_service.py`, `app/db/repositories/conversation_repo.py`, `app/api/v1/{chat,conversations}.py`.
+Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour); `tests/chat_helpers.py` gives chat tests a database, two users and a scriptable fake provider.
 
 ## Configuration and database
 
@@ -72,4 +83,4 @@ Tests: `tests/unit`, `tests/contract` (HTTP behaviour).
   `cd api && uv run alembic revision --autogenerate -m "message"`.
 - Tests run on SQLite. To also run the migration tests on PostgreSQL:
   `TEST_POSTGRES_URL=postgresql+psycopg://user:pass@localhost:5432/dbname uv run pytest tests/integration`
-  (the database's `users`/`alembic_version` tables are dropped, so use a scratch database).
+  (the database's `users`, `conversations`, `messages` and `alembic_version` tables are dropped, so use a scratch database).

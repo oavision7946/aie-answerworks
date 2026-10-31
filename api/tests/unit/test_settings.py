@@ -45,6 +45,7 @@ class TestRepoConfigIsValid(unittest.TestCase):
         self.assertEqual(loaded.rag.retrieval.top_k, 5)
         self.assertEqual(loaded.corpora.corpora, [])
         self.assertEqual(loaded.app.auth.access_token_ttl_minutes, 15)
+        self.assertEqual(loaded.app.chat.history_messages, 20)
 
     def test_settings_are_cached(self):
         self.assertIs(settings.get_settings(), settings.get_settings())

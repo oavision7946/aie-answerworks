@@ -9,5 +9,8 @@ auth:
   access_token_ttl_minutes: 15
   refresh_token_ttl_days: 7
 
+chat:
+  history_messages: 20
+
 limits:
   max_upload_mb: 20

@@ -2,7 +2,7 @@
 
 One interface (API + UI) for working with several AI models, with retrieval-augmented generation (RAG) so answers can be grounded in your own documents.
 
-> **Project status: early development.** The model layer, admin-created accounts with login, and a chat UI work today; saved conversations and RAG are planned and not built yet. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
+> **Project status: early development.** The model layer, admin-created accounts with login, saved conversations (API) and a chat UI work today; the UI does not use saved conversations yet, and RAG is planned and not built. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
 
 FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration in YAML, secrets in `.env`.
 
@@ -10,15 +10,16 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 
 - **Several providers behind one interface:** Anthropic, OpenAI, and any OpenAI-compatible server (Ollama, vLLM, llama.cpp, ...). Providers and models are declared in [config/providers.yaml](config/providers.yaml); a provider whose API key is missing is skipped, so you only need keys for the ones you use.
 - **Login and accounts:** every endpoint except `/health` and `/auth/*` requires a bearer token. There is no self-registration: an admin bootstraps with `make create-admin` and then creates accounts through the admin API. Passwords are hashed with Argon2, sessions use short-lived JWT access tokens plus refresh tokens, accounts can be deactivated, and a new user must choose their own password before using anything else. Roles are `admin` and `user`.
-- **Chat endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
+- **Saved conversations:** `POST /chat` sends a message into a conversation (or starts a new one) and the model sees the earlier messages. Conversations and messages are stored in PostgreSQL per user, with provider, model, tokens, latency and cost on every reply, and nobody else can read, rename or delete them. List, read, rename and delete through `/conversations`. Streaming works here too.
+- **Stateless question endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
 - **Transparent usage:** every answer reports provider, model, token count, latency and estimated cost. Cost is `null` for models with no pricing configured.
-- **Chat UI:** a Streamlit app with a sign-in screen, a forced password-change screen, a model picker, a streaming toggle and per-answer usage details.
+- **Chat UI:** a Streamlit app with a sign-in screen, a forced password-change screen, a model picker, a streaming toggle and per-answer usage details. It still uses the stateless `/ask`; browsing and resuming saved conversations in the UI comes next.
 - **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
 ### Not built yet
 
-Saved conversations, an admin page in the UI (users are managed through the API for now), and RAG (document upload, shared corpora, retrieval with citations). The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. `/ask` is a stateless stepping stone and will be replaced by conversation endpoints.
+A UI for saved conversations, an admin page in the UI (users are managed through the API for now), and RAG (document upload, shared corpora, retrieval with citations). The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. `/ask` is a stateless stepping stone: it stays only until the UI moves to `/chat`.
 
 ## Prerequisites
 
@@ -221,6 +222,83 @@ Create a second user, see the forced password change and try the admin rules exa
 
 Stop both services, then `make db-down` (or `make db-destroy` to delete the data). Remove your keys from `.env` if this is a shared machine.
 
+## Demo: saved conversations (API)
+
+Builds on the demos above: the same running system, now with conversations that are stored and remembered. It uses curl against the API, because the UI does not use saved conversations yet. It works with the fake provider or with real keys. With the fake provider the answers just echo, so the point is what gets stored and who can see it; with real keys you can also watch the model use earlier messages.
+
+**1. Start from a running system**
+
+Follow steps 1 to 3 of either demo above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
+
+**2. Sign in and send a first message**
+
+```bash
+login() {
+  curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
+}
+TOKEN=$(login admin@example.com 'admin passphrase 1')
+curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message": "My favourite colour is green. Please remember it."}'
+```
+
+The reply has the answer, usage (`tokens_used`, `latency_ms`, `cost_usd`) and a `conversation_id`. Copy it: `CID=<the id>`. The conversation title was taken from your first message.
+
+**3. Continue the conversation**
+
+```bash
+curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"conversation_id\": \"$CID\", \"message\": \"Which colour did I say?\"}"
+```
+
+With a real model the answer mentions green, because the earlier messages are sent along with the new one (the most recent `chat.history_messages` of them, 20 by default, in `config/app.yaml`). The fake provider only echoes, so use the next step to see what was stored.
+
+**4. Read the history**
+
+```bash
+curl -s localhost:8000/conversations/$CID -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+Each assistant message records its own provider, model, tokens, latency and cost. The user's own messages carry none.
+
+**5. Stream a reply and switch models**
+
+```bash
+curl -N -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"conversation_id\": \"$CID\", \"message\": \"Say hello\", \"stream\": true}"
+```
+
+You get `delta` events and a final `done` event with the stored message id. Add `"provider"` and `"model"` (ids from `GET /models`) to answer with a different model; the conversation then remembers it for the next message. A message is stored only after the model answered, so a failed call leaves nothing behind and you can simply send it again.
+
+**6. List, rename, delete**
+
+```bash
+curl -s localhost:8000/conversations -H "Authorization: Bearer $TOKEN"        # newest activity first
+curl -s -X PATCH localhost:8000/conversations/$CID -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"title": "Colours"}'
+```
+
+Delete is shown at the end of the next step.
+
+**7. See that conversations are private**
+
+Create a second user and sign in as them (steps 5 and 6 of the demo above, including the forced password change), then:
+
+```bash
+ANA=$(login ana@example.com '<ana new password>')
+curl -s localhost:8000/conversations -H "Authorization: Bearer $ANA"                 # []
+curl -s localhost:8000/conversations/$CID -H "Authorization: Bearer $ANA"            # 404, as if it did not exist
+curl -s localhost:8000/chat -H "Authorization: Bearer $ANA" -H 'Content-Type: application/json' \
+  -d "{\"conversation_id\": \"$CID\", \"message\": \"hi\"}"                     # 404
+curl -s -X DELETE localhost:8000/conversations/$CID -H "Authorization: Bearer $TOKEN" -w '%{http_code}\n'   # 204 (yours)
+```
+
+Not even an admin can read another user's conversations through these endpoints.
+
+**8. Clean up**
+
+Same as the demos above. Deleting a conversation also deletes its messages; stopping the services and `make db-down` is all that is left.
+
 ## API access in short
 
 | Endpoint | Who | Purpose |
@@ -228,7 +306,8 @@ Stop both services, then `make db-down` (or `make db-destroy` to delete the data
 | `GET /health` | anyone | API and database status |
 | `POST /auth/login`, `POST /auth/refresh` | anyone | Get or renew a token pair |
 | `GET /auth/me`, `POST /auth/change-password` | signed in (works while a password change is pending) | Current user, change own password |
-| `GET /models`, `POST /ask` | signed in, password change done | Models and chat |
+| `GET /models`, `POST /ask` | signed in, password change done | Models and stateless questions |
+| `POST /chat`, `/conversations` (create, list, read, rename, delete) | signed in, password change done; each user sees only their own | Saved conversations and chat |
 | `POST /admin/users`, `GET /admin/users`, `PATCH /admin/users/{id}`, `POST /admin/users/{id}/reset-password` | admin | User management |
 
 Details are in [api/README.md](api/README.md) and the interactive docs at `/docs`.
@@ -242,7 +321,7 @@ Details are in [api/README.md](api/README.md) and the interactive docs at `/docs
 | File | What it controls |
 |---|---|
 | [config/providers.yaml](config/providers.yaml) | Providers, their models, optional per-model pricing (USD per 1M tokens), timeouts, retries and the default provider |
-| [config/app.yaml](config/app.yaml) | App name and environment, CORS origins, auth token lifetimes, upload limit |
+| [config/app.yaml](config/app.yaml) | App name and environment, CORS origins, auth token lifetimes, how many past messages chat sends to the model, upload limit |
 | [config/rag.yaml](config/rag.yaml) | Embeddings, chunking and retrieval settings (reserved for RAG) |
 | [config/corpora.yaml](config/corpora.yaml) | Shared document collections (reserved for RAG) |
 | `.env` | Secrets and deployment values only: provider API keys, `DATABASE_URL`, `JWT_SECRET` (at least 16 characters), and optionally `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` for `make create-admin`. Never committed |
@@ -268,7 +347,7 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | `api/` | FastAPI backend and its tests; see [api/README.md](api/README.md) |
 | `ui/` | Streamlit frontend and its tests; see [ui/README.md](ui/README.md) |
 | `config/` | Non-secret YAML configuration |
-| `docs/` | Documentation (index only so far) |
+| `docs/` | Documentation: authentication, authorization, conversations, data model, admin guide |
 | `Makefile` | Install, run, test, lint, migrate, create-admin and local-database commands |
 
 `api/` and `ui/` are separate uv projects with their own environments, which is why `make install` syncs both.
@@ -281,8 +360,8 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | 2 | API core: validated config, PostgreSQL, migrations, health | Done |
 | 3 | Provider layer: Anthropic, OpenAI, local and fake providers | Done |
 | 4 | Auth and users: login, JWT, roles, admin-created accounts | Done |
-| 5 | Conversations and chat: persistence and streaming | Next |
-| 6 | UI: conversations and admin pages (login screen done) | Planned |
+| 5 | Conversations and chat: persistence and streaming (API) | Done |
+| 6 | UI: conversations and admin pages (login screen done) | Next |
 | 7 | RAG: documents, shared corpora, retrieval with citations | Planned |
 | 8 | Docker Compose, docs site, end-to-end tests | Planned |
 

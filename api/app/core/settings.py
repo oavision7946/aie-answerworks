@@ -147,10 +147,16 @@ class LimitsConfig(_Strict):
     max_upload_mb: int = Field(gt=0)
 
 
+class ChatConfig(_Strict):
+    # How many of the most recent stored messages are sent to the model with each new message.
+    history_messages: int = Field(gt=0)
+
+
 class AppConfig(_Strict):
     app: AppInfo
     cors: CorsConfig
     auth: AuthConfig
+    chat: ChatConfig
     limits: LimitsConfig
 
 
