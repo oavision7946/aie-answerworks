@@ -316,6 +316,23 @@ class TestAnthropicProvider(unittest.TestCase):
         self.assertEqual(sent["max_tokens"], REQUEST.max_output_tokens)
         self.assertEqual(self.up.last.headers["x-api-key"], "sk-ant")
 
+    def test_workspace_header_is_sent_only_when_configured(self):
+        self.up.reply(json_body=anthropic_message())
+        self.provider.complete("m", MESSAGES)
+        self.assertNotIn("anthropic-workspace-id", self.up.last.headers)
+
+        scoped = AnthropicProvider(
+            "anthropic",
+            config("anthropic", api_key_env="K"),
+            REQUEST,
+            "sk-ant",
+            http_client=self.up.client(),
+            workspace_id="wrkspc_123",
+        )
+        scoped.complete("m", MESSAGES)
+
+        self.assertEqual(self.up.last.headers["anthropic-workspace-id"], "wrkspc_123")
+
     def test_no_system_field_when_there_is_no_system_message(self):
         self.up.reply(json_body=anthropic_message())
 

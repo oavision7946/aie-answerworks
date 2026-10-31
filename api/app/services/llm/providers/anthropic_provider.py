@@ -51,10 +51,14 @@ class AnthropicProvider(Provider):
         request: RequestConfig,
         api_key: str,
         http_client: Any = None,
+        workspace_id: str | None = None,
     ) -> None:
         super().__init__(name, config, request)
+        # Keys that are not scoped to a workspace must name one on every request.
+        headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
         self.client = anthropic.Anthropic(
             api_key=api_key,
+            default_headers=headers,
             timeout=request.timeout_seconds,
             max_retries=0,
             http_client=http_client,

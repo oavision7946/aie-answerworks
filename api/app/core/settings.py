@@ -48,6 +48,8 @@ class ProviderConfig(_Strict):
     type: Literal["anthropic", "openai", "openai_compatible", "fake"]
     enabled: bool = False
     api_key_env: str | None = None
+    # Anthropic only: env var holding a workspace id, for keys not scoped to a workspace.
+    workspace_id_env: str | None = None
     base_url: str | None = None
     default_model: str
     models: list[ModelConfig] = Field(min_length=1)
@@ -61,6 +63,8 @@ class ProviderConfig(_Strict):
             raise ValueError(f"default_model {self.default_model!r} is not in models")
         if self.type in ("anthropic", "openai") and not self.api_key_env:
             raise ValueError(f"{self.type} providers require api_key_env")
+        if self.workspace_id_env and self.type != "anthropic":
+            raise ValueError("workspace_id_env is only supported for anthropic providers")
         if self.type == "openai_compatible" and not self.base_url:
             raise ValueError("openai_compatible providers require base_url")
         return self

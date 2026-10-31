@@ -114,6 +114,11 @@ class TestProvidersValidation(unittest.TestCase):
             ProvidersConfig.model_validate(data)
 
         data = providers_data()
+        data["providers"]["openai"]["workspace_id_env"] = "SOME_ID"
+        with self.assertRaisesRegex(ValidationError, "only supported for anthropic"):
+            ProvidersConfig.model_validate(data)
+
+        data = providers_data()
         del data["providers"]["local"]["base_url"]
         with self.assertRaisesRegex(ValidationError, "require base_url"):
             ProvidersConfig.model_validate(data)

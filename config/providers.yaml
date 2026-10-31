@@ -19,6 +19,9 @@ providers:
     type: anthropic
     enabled: true
     api_key_env: ANTHROPIC_API_KEY
+    # Only needed when the key is not scoped to a workspace (the API then answers 400 asking for an
+    # anthropic-workspace-id header). Name the env var that holds the workspace id; unset = no header.
+    workspace_id_env: ANTHROPIC_WORKSPACE_ID
     default_model: claude-sonnet-5-5
     models:
       - id: claude-fable-5-1

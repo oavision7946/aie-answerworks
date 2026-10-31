@@ -40,6 +40,21 @@ class TestBuildRegistry(unittest.TestCase):
         self.assertIsInstance(built.providers["openai"], OpenAIProvider)
         self.assertEqual(built.default_provider, "anthropic")
 
+    def test_workspace_id_is_read_from_the_configured_env_var(self):
+        def configure(data):
+            data["providers"]["anthropic"]["workspace_id_env"] = "ANTHROPIC_WORKSPACE_ID"
+
+        built = build(
+            configure, env={"ANTHROPIC_API_KEY": "a", "ANTHROPIC_WORKSPACE_ID": "wrkspc_1"}
+        )
+        unset = build(configure, env={"ANTHROPIC_API_KEY": "a"})
+
+        sent = built.providers["anthropic"].client.default_headers
+        self.assertEqual(sent["anthropic-workspace-id"], "wrkspc_1")
+        self.assertNotIn(
+            "anthropic-workspace-id", unset.providers["anthropic"].client.default_headers
+        )
+
     def test_providers_without_keys_are_skipped_with_a_warning(self):
         with self.assertLogs(registry.logger, level="WARNING") as captured:
             built = build(env={"OPENAI_API_KEY": "o"})

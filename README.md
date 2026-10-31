@@ -54,6 +54,18 @@ Open http://localhost:8501 and sign in with the admin account you just created. 
 
 If something is already listening on port 5432, use another port: `make db-up DB_PORT=55432`, then put the `DATABASE_URL` it prints into `.env`. `make db-down` stops the database (data is kept); `make db-destroy` deletes the data.
 
+### Clean up
+
+Stop `make run-api` and `make run-ui` with Ctrl+C in their terminals, then:
+
+```bash
+make db-down              # stop the database, keeping its data
+make db-destroy           # or delete the container and its data (you will need `make migrate` and `make create-admin` again)
+make clean                # remove __pycache__, .pytest_cache and the docs build
+```
+
+Local files you may want to remove too: `.env` (it holds your keys) and the virtual environments in `api/.venv` and `ui/.venv`. Pass the same `DB_PORT`/`DB_CONTAINER` values to `db-down` and `db-destroy` if you overrode them in `db-up`.
+
 ## Demo: run the whole system without API keys
 
 This walks through login, the forced password change, and the admin API using the built-in fake provider, which echoes your question, so it costs nothing and needs no provider keys. Nothing here edits tracked files.
@@ -133,7 +145,81 @@ rm -rf /tmp/aw-config
 unset ANSWERWORKS_CONFIG_DIR
 ```
 
-To use real providers instead, skip step 2 and put the keys for the providers you want in `.env`.
+To use real providers instead, see the next section.
+
+## Demo: run the whole system with API keys
+
+Same flow as the demo above, but answers come from real models. Requests are billed by the provider, so keep questions short. The Anthropic, OpenAI and local adapters are tested against mocked HTTP only; this demo is how you check them against the real services.
+
+**1. Prepare**
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+- `JWT_SECRET`: a random string of at least 16 characters (`openssl rand -hex 32`).
+- The key for each provider you want: `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`. A provider without a key is skipped with a warning in the API log, so you only need one. With only an OpenAI key the default falls back to OpenAI automatically.
+- `ANTHROPIC_WORKSPACE_ID`: only if Anthropic answers with `This API key is not scoped to a workspace ... must include the anthropic-workspace-id header`. Put the ID of the workspace to use here (or create a key scoped to a workspace instead). Leave it empty otherwise.
+- If port 5432 is taken, `DATABASE_URL=postgresql+psycopg://answerworks:answerworks@localhost:55432/answerworks`, and add `DB_PORT=55432` to the `make db-up` command.
+
+```bash
+make install
+make db-up
+make migrate
+unset ANSWERWORKS_CONFIG_DIR     # in case the fake-provider config from the other demo is still set
+```
+
+To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: true` for `local` in `config/providers.yaml`, adjust its `base_url` and model ids, and make sure the server is running. To change which models are offered or their prices, edit the lists in the same file.
+
+**2. Create the first admin and start both services**
+
+```bash
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
+BOOTSTRAP_ADMIN_PASSWORD='admin passphrase 1' \
+make create-admin
+
+make run-api              # terminal 1
+make run-ui               # terminal 2
+```
+
+**3. Check which providers loaded**
+
+`/models` needs a token, so sign in first to get an `access_token`. Either use the interactive docs or a terminal.
+
+In the browser, open http://localhost:8000/docs:
+
+1. Expand `POST /auth/login`, click **Try it out**, enter `{"email": "admin@example.com", "password": "admin passphrase 1"}` and click **Execute**.
+2. Copy the value of `access_token` from the response body (the long string, without the quotes).
+3. Click **Authorize** at the top right, paste it into the value box, click **Authorize**, then **Close**.
+4. Expand `GET /models`, click **Try it out**, then **Execute**.
+
+In a terminal:
+
+```bash
+TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"admin passphrase 1"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s localhost:8000/models -H "Authorization: Bearer $TOKEN"
+```
+
+The access token is valid for 15 minutes (`auth.access_token_ttl_minutes` in `config/app.yaml`); after that, log in again for a new one. Only models of providers that loaded are listed. If one is missing, look in the `make run-api` output for a warning naming the environment variable that is not set.
+
+**4. Chat**
+
+Open http://localhost:8501 and sign in. Pick a model in the sidebar, ask a question, and compare:
+
+- the answer from different providers and models (use the same question);
+- streaming: toggle **Stream responses** to see the answer arrive in pieces;
+- tokens and estimated cost under each answer. Cost shows "n/a" for models with no `pricing` entry in `config/providers.yaml`.
+
+**5. Accounts and rules**
+
+Create a second user, see the forced password change and try the admin rules exactly as in steps 5 to 7 of the demo above. A user's token works with every configured provider.
+
+**6. Clean up**
+
+Stop both services, then `make db-down` (or `make db-destroy` to delete the data). Remove your keys from `.env` if this is a shared machine.
 
 ## API access in short
 
@@ -202,4 +288,4 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 
 ## License
 
-No license has been chosen yet, so by default all rights are reserved. Add a `LICENSE` file before inviting reuse or contributions.
+Released under the [MIT License](LICENSE).

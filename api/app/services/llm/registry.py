@@ -40,7 +40,10 @@ def build_provider(
         case "openai":
             return OpenAIProvider(name, config, request, api_key or "")
         case _:
-            return AnthropicProvider(name, config, request, api_key or "")
+            workspace_id = os.getenv(config.workspace_id_env) if config.workspace_id_env else None
+            return AnthropicProvider(
+                name, config, request, api_key or "", workspace_id=workspace_id
+            )
 
 
 class ProviderRegistry:
