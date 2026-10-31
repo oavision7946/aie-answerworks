@@ -80,9 +80,20 @@ TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"email":"ana@example.com","temporary_password":"<temporary password>"}'
 
-# 3. See everyone, or deactivate someone (use the "id" from the list)
+# 3. List users and their ids
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN"
-curl -s -X PATCH localhost:8000/admin/users/<id> -H "Authorization: Bearer $TOKEN" \
+
+# 4. Deactivate a user (here, id 2)
+curl -s -X PATCH localhost:8000/admin/users/2 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"is_active": false}'
+
+# or using the email
+ID=$(curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" \
+  | jq -r '.[] | select(.email=="ana@example.com") | .id')
+curl -s -X PATCH localhost:8000/admin/users/$ID \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"is_active": false}'
 ```
 
