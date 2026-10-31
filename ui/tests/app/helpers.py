@@ -10,6 +10,8 @@ ASK = str(APP_DIR / "views" / "ask.py")
 CHAT = str(APP_DIR / "views" / "chat.py")
 CONVERSATIONS = str(APP_DIR / "views" / "conversations.py")
 ADMIN_USERS = str(APP_DIR / "views" / "admin_users.py")
+DOCUMENTS = str(APP_DIR / "views" / "documents.py")
+ADMIN_CORPORA = str(APP_DIR / "views" / "admin_corpora.py")
 
 
 def models_payload(*models, default=0):
@@ -64,3 +66,57 @@ ME_USER = {
     "must_change_password": False,
 }
 ME_ADMIN = {**ME_USER, "id": "u-0", "email": "root@example.com", "role": "admin"}
+
+RAG_OPTIONS = {
+    "embedding_models": [
+        {
+            "name": "small",
+            "provider": "openai",
+            "model": "emb-small",
+            "dimensions": 8,
+            "available": True,
+        },
+        {
+            "name": "large",
+            "provider": "openai",
+            "model": "emb-large",
+            "dimensions": 16,
+            "available": True,
+        },
+        {
+            "name": "offline",
+            "provider": "local",
+            "model": "nomic",
+            "dimensions": 4,
+            "available": False,
+        },
+    ],
+    "chunking_strategies": [
+        {"name": "recursive", "method": "recursive", "size": 800, "overlap": 120},
+        {"name": "sentence", "method": "sentence", "size": 500, "overlap": 100},
+    ],
+    "default_embedding": "small",
+    "default_chunking": "recursive",
+    "top_k": 5,
+    "supported_formats": ["pdf", "txt", "md"],
+    "max_upload_mb": 10,
+}
+INDEX = {
+    "embedding_name": "small",
+    "embedding_provider": "openai",
+    "embedding_model": "emb-small",
+    "embedding_dimensions": 8,
+    "chunking_name": "recursive",
+    "chunking_method": "recursive",
+    "chunk_size": 800,
+    "chunk_overlap": 120,
+    "chunk_count": 3,
+}
+CORPUS = {
+    "id": "k-1",
+    "name": "handbook",
+    "description": "Policies",
+    "is_public": False,
+    "document_count": 1,
+    "has_source": True,
+}

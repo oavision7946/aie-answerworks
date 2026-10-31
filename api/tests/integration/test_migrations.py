@@ -33,7 +33,16 @@ class MigrationChecks:
 
         engine = create_db_engine(self.url)
         self.assertTrue(
-            {"users", "conversations", "messages"} <= set(inspect(engine).get_table_names())
+            {
+                "users",
+                "conversations",
+                "messages",
+                "corpora",
+                "corpus_access",
+                "documents",
+                "chunks",
+            }
+            <= set(inspect(engine).get_table_names())
         )
         columns = {c["name"] for c in inspect(engine).get_columns("users")}
         self.assertEqual(
@@ -51,6 +60,31 @@ class MigrationChecks:
         with engine.connect() as connection:
             diff = compare_metadata(MigrationContext.configure(connection), Base.metadata)
         self.assertEqual(diff, [], "models and migrations have drifted; add a migration")
+
+    def test_chunks_record_the_embedding_model_and_splitter(self):
+        command.upgrade(alembic_config(self.url), "head")
+
+        columns = {c["name"] for c in inspect(create_db_engine(self.url)).get_columns("chunks")}
+
+        self.assertEqual(
+            columns,
+            {
+                "id",
+                "document_id",
+                "chunk_index",
+                "text",
+                "embedding",
+                "embedding_name",
+                "embedding_provider",
+                "embedding_model",
+                "embedding_dimensions",
+                "chunking_name",
+                "chunking_method",
+                "chunk_size",
+                "chunk_overlap",
+                "created_at",
+            },
+        )
 
     def test_conversation_columns(self):
         command.upgrade(alembic_config(self.url), "head")
@@ -128,9 +162,12 @@ class TestPostgresMigrations(MigrationChecks, unittest.TestCase):
         engine = create_db_engine(self.url)
         with engine.begin() as connection:
             connection.exec_driver_sql(
-                "DROP TABLE IF EXISTS messages, conversations, users, alembic_version CASCADE"
+                "DROP TABLE IF EXISTS chunks, documents, corpus_access, corpora, messages, "
+                "conversations, users, alembic_version CASCADE"
             )
-            connection.exec_driver_sql("DROP TYPE IF EXISTS user_role, message_role")
+            connection.exec_driver_sql(
+                "DROP TYPE IF EXISTS user_role, message_role, document_status"
+            )
         engine.dispose()
 
 

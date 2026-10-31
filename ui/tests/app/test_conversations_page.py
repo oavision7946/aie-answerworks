@@ -6,7 +6,7 @@ import unittest
 import respx
 
 from app import config
-from tests.app.helpers import ONE, new_app
+from tests.app.helpers import ONE, RAG_OPTIONS, new_app
 
 BASE = config.API_BASE_URL.rstrip("/")
 CONV = "00000000-0000-0000-0000-00000000000a"
@@ -56,6 +56,7 @@ class TestConversationsPage(unittest.TestCase):
         mock = respx.mock(assert_all_called=False)
         mock.start()
         self.addCleanup(mock.stop)
+        mock.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         mock.get(f"{BASE}/models").respond(json=ONE)
         self.list = mock.get(f"{BASE}/conversations").respond(
             json=[summary(), summary(OTHER, "Trip")]

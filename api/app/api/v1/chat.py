@@ -14,6 +14,8 @@ from app.services import chat_service
 from app.services.conversation_service import ConversationNotFoundError
 from app.services.llm.errors import LLMServiceError
 from app.services.llm.registry import ProviderRegistry, get_registry
+from app.services.rag.context import RagContext, get_rag_context
+from app.services.rag.errors import RagError
 
 router = APIRouter(tags=["chat"])
 
@@ -26,6 +28,7 @@ def chat(
     registry: Annotated[ProviderRegistry, Depends(get_registry)],
     settings: Annotated[Settings, Depends(get_settings)],
     engine: Annotated[Engine, Depends(get_engine)],
+    rag: Annotated[RagContext, Depends(get_rag_context)],
 ) -> ChatResponse | StreamingResponse:
     """Send a message. Without `conversation_id` a new conversation is started.
 
@@ -33,7 +36,9 @@ def chat(
     The exchange is stored only after the model answers successfully.
     """
     try:
-        turn = chat_service.prepare(db, user, request, registry, settings.app.chat.history_messages)
+        turn = chat_service.prepare(
+            db, user, request, registry, settings.app.chat.history_messages, rag
+        )
         if request.stream:
             return StreamingResponse(
                 chat_service.stream_reply(lambda: Session(engine, expire_on_commit=False), turn),
@@ -42,5 +47,5 @@ def chat(
         return chat_service.reply(db, turn)
     except ConversationNotFoundError:
         raise HTTPException(404, "Conversation not found.") from None
-    except LLMServiceError as exc:
+    except (LLMServiceError, RagError) as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc

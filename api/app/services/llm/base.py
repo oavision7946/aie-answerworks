@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.core.settings import ModelConfig, ProviderConfig, RequestConfig
+from app.services.llm.errors import ProviderError
 
 
 @dataclass(frozen=True)
@@ -74,3 +75,9 @@ class Provider(ABC):
     @abstractmethod
     def stream(self, model: str, messages: list[ChatMessage]) -> Iterator[StreamEvent]:
         """Yield TextDelta items, then one StreamEnd (usage is None if the backend gave none)."""
+
+    def embed(
+        self, model: str, texts: list[str], dimensions: int | None = None
+    ) -> list[list[float]]:
+        """Return one vector per text, in order. Providers without embeddings keep this default."""
+        raise ProviderError(f"provider {self.name!r} does not support embeddings")

@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from app.db.models import MessageRole
+from app.schemas.rag import Citation
 
 
 def _strip(value: Any) -> Any:
@@ -28,6 +29,13 @@ class ChatRequest(BaseModel):
     provider: StrictStr | None = None
     model: StrictStr | None = None
     stream: StrictBool = False
+    # Retrieval-augmented answer: passages from your documents and the corpora you can read.
+    use_rag: StrictBool = False
+    # Limit the shared corpora searched (your own documents are always included).
+    corpus_ids: list[uuid.UUID] | None = None
+    # Embedding model and splitter whose index is searched; omitted -> the configured defaults.
+    embedding: StrictStr | None = None
+    chunking: StrictStr | None = None
 
     @field_validator("message", mode="before")
     @classmethod
@@ -47,6 +55,7 @@ class ChatResponse(BaseModel):
     tokens_used: int
     latency_ms: int
     cost_usd: float | None  # null when the model has no pricing configured
+    citations: list[Citation] = []  # the passages the answer was grounded in (RAG only)
 
 
 class ConversationCreate(BaseModel):
@@ -85,6 +94,7 @@ class MessageOut(BaseModel):
     latency_ms: int | None
     cost_usd: float | None
     retrieved_chunk_ids: list[str]
+    citations: list[Citation] = []
     created_at: datetime
 
 

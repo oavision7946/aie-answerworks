@@ -7,7 +7,7 @@ import httpx
 import respx
 
 from app import config
-from tests.app.helpers import CHAT_RESULT, ME_USER, ONE, SIGNED_IN, new_app
+from tests.app.helpers import CHAT_RESULT, ME_USER, ONE, RAG_OPTIONS, SIGNED_IN, new_app
 
 BASE = config.API_BASE_URL.rstrip("/")
 PAIR = {"access_token": "access-2", "refresh_token": "refresh-2", "must_change_password": False}
@@ -27,6 +27,7 @@ def texts(elements):
 class TestLogin(unittest.TestCase):
     @respx.mock
     def test_anonymous_visitor_sees_only_the_login_form(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         models = respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=None).run()
@@ -41,6 +42,7 @@ class TestLogin(unittest.TestCase):
     def test_successful_login_shows_chat_and_sends_token(self):
         login = respx.post(f"{BASE}/auth/login").respond(json=PAIR)
         respx.get(f"{BASE}/auth/me").respond(json=ME_USER)
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         models = respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=None).run()
@@ -103,6 +105,7 @@ class TestLogin(unittest.TestCase):
 class TestSignOut(unittest.TestCase):
     @respx.mock
     def test_sign_out_clears_session_and_chat(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         respx.get(f"{BASE}/models").respond(json=ONE)
         respx.post(f"{BASE}/chat").respond(json=CHAT_RESULT)
 
@@ -127,6 +130,7 @@ class TestForcedPasswordChange(unittest.TestCase):
 
     @respx.mock
     def test_chat_is_blocked_until_password_is_changed(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         models = respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=self.PENDING).run()
@@ -141,6 +145,7 @@ class TestForcedPasswordChange(unittest.TestCase):
         change = respx.post(f"{BASE}/auth/change-password").respond(204)
         login = respx.post(f"{BASE}/auth/login").respond(json=PAIR)
         respx.get(f"{BASE}/auth/me").respond(json=ME_USER)
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         respx.get(f"{BASE}/models").respond(json=ONE)
 
         at = new_app(auth=self.PENDING).run()
@@ -204,6 +209,7 @@ class TestForcedPasswordChange(unittest.TestCase):
 class TestExpiredTokens(unittest.TestCase):
     @respx.mock
     def test_expired_access_token_is_refreshed_transparently(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         models = respx.get(f"{BASE}/models").mock(
             side_effect=[
                 httpx.Response(401, json={"detail": "expired"}),
@@ -224,6 +230,7 @@ class TestExpiredTokens(unittest.TestCase):
 
     @respx.mock
     def test_failed_refresh_signs_out_with_a_notice(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         respx.get(f"{BASE}/models").respond(401, json={"detail": "expired"})
         respx.post(f"{BASE}/auth/refresh").respond(401, json={"detail": "expired"})
 
@@ -235,6 +242,7 @@ class TestExpiredTokens(unittest.TestCase):
 
     @respx.mock
     def test_token_rejected_again_after_refresh_signs_out(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         respx.get(f"{BASE}/models").respond(401, json={"detail": "expired"})
         respx.post(f"{BASE}/auth/refresh").respond(json=PAIR)
 
@@ -244,6 +252,7 @@ class TestExpiredTokens(unittest.TestCase):
 
     @respx.mock
     def test_expired_token_when_asking_refreshes_and_retries(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         respx.get(f"{BASE}/models").respond(json=ONE)
         ask = respx.post(f"{BASE}/chat").mock(
             side_effect=[

@@ -1,4 +1,4 @@
-.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate clean
+.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate ingest clean
 
 API_DIR := api
 UI_DIR  := ui
@@ -49,6 +49,10 @@ migrate:
 # Create the first administrator (prompts for email/password, or reads BOOTSTRAP_ADMIN_* from .env).
 create-admin:
 	cd $(API_DIR) && uv run python -m scripts.create_admin
+
+# Ingest shared corpora, for example: make ingest ARGS="--corpus company-handbook"
+ingest:
+	cd $(API_DIR) && uv run python -m scripts.ingest $(ARGS)
 
 clean:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

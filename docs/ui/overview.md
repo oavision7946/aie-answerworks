@@ -15,8 +15,14 @@ The UI is a Streamlit app that talks to the API over HTTP only. It never touches
 |---|---|---|
 | Chat | everyone | Sends messages to `POST /chat`. The conversation is stored and earlier messages are sent to the model. Model picker, streaming toggle, and model, tokens and cost under every answer. "New chat" starts over. |
 | Conversations | everyone | Lists your conversations (model, last activity). **Open** resumes one in Chat with its full history; **Rename**; **Delete** after a confirmation. |
+| Documents | everyone | **My uploads**: upload a file with a chosen embedding model and splitting strategy, see how each document was indexed, view its chunks, add another index, delete. **Shared corpora**: browse the corpora you can read (read-only). The two are separate sections. |
 | Ask | everyone | Question-answer through `POST /ask`: one question, one answer, nothing stored. Useful for one-off questions and for comparing models. |
 | Admin · Users | admins | Table of accounts; create a user with a temporary password; change role, deactivate or reactivate; reset a password. |
+| Admin · Corpora | admins | Create corpora, set the public flag, grant and revoke users, upload documents or ingest the configured source folder, see each file's status and indexes, delete. |
+
+## Chat with documents
+
+The Chat sidebar has an **Answer from my documents** switch. When it is on, **Retrieval settings** let you pick the embedding model, the splitting strategy and which shared corpora to search. Answers then show a **Sources** section: each passage with its file, similarity and the index (embedding model and strategy) it came from. Sources are kept when you reopen the conversation, as long as you can still read those documents. See [RAG](../rag.md).
 
 ## Chat and Ask: why both
 

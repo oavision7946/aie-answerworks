@@ -47,6 +47,30 @@ Emails are stored lowercased. Creating a duplicate returns 409.
 
 Signed in as an admin, the **Admin · Users** page does the same without curl: the table lists accounts, **Add a user** creates one with a temporary password and a role, and **Manage a user** changes the role, deactivates or reactivates an account, or resets its password. The API's messages (for example the self-lockout rule) are shown on the page.
 
+## Shared corpora
+
+A corpus is a shared collection of documents. Users can read it when it is public or when you grant them access; nobody else sees it, and revoking takes effect on their next request. You also need a grant (or the public flag) for your own searches to include a corpus.
+
+```bash
+# create, upload a file into it, grant a user, then ingest a source folder
+curl -s localhost:8000/corpora -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "handbook", "description": "Policies", "is_public": false}'
+curl -s localhost:8000/documents -H "Authorization: Bearer $TOKEN" -F file=@policy.md -F corpus_id=$CORPUS_ID
+curl -s localhost:8000/corpora/$CORPUS_ID/access -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d "{\"user_id\": \"$USER_ID\"}"
+curl -s localhost:8000/corpora/$CORPUS_ID/ingest -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"embedding": "openai-small", "chunking": "recursive"}'
+```
+
+Corpora declared in `config/corpora.yaml` (with a `filesystem` source) are created or updated by the command-line tool, which indexes every PDF, TXT and Markdown file under the folder:
+
+```bash
+make ingest ARGS="--corpus handbook"
+make ingest ARGS="--all --embedding openai-large --chunking sentence"   # a second index for the same files
+```
+
+Run it again after the files change: documents are matched by their path in the folder. A file that cannot be read is kept with status `failed` and a reason, and shows to admins only. The **Admin · Corpora** page offers the same operations. Details: [Documents and corpora](api/documents.md), [RAG](rag.md).
+
 ## Deactivate a user
 
 ```bash

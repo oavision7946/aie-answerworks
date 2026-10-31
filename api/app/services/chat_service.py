@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -13,12 +13,15 @@ from app.db.models import Conversation, User
 from app.db.repositories import conversation_repo
 from app.schemas.ask import AskResponse
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.rag import Citation
 from app.services import conversation_service
 from app.services.conversation_service import ConversationNotFoundError
 from app.services.llm import service
 from app.services.llm.base import ChatMessage
 from app.services.llm.errors import FAILED, LLMServiceError
 from app.services.llm.registry import ProviderRegistry, ResolvedModel
+from app.services.rag import retrieval_service, retriever
+from app.services.rag.context import RagContext
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,9 @@ class Turn:
     prompt: list[ChatMessage]
     resolved: ResolvedModel
     started_at: datetime
+    use_rag: bool = False
+    corpus_ids: list[str] | None = None
+    citations: list[Citation] = field(default_factory=list)
 
 
 def _resolve(
@@ -53,9 +59,17 @@ def _resolve(
 
 
 def prepare(
-    db: Session, user: User, request: ChatRequest, registry: ProviderRegistry, history_messages: int
+    db: Session,
+    user: User,
+    request: ChatRequest,
+    registry: ProviderRegistry,
+    history_messages: int,
+    rag: RagContext | None = None,
 ) -> Turn:
-    """Validate ownership, pick the model and build the prompt. Raises before any provider call."""
+    """Validate ownership, pick the model, retrieve passages if asked and build the prompt.
+
+    Raises before any provider call.
+    """
     started_at = datetime.now(UTC)
     conversation = None
     history: list[ChatMessage] = []
@@ -64,13 +78,31 @@ def prepare(
         stored = conversation_repo.recent_messages(db, conversation.id, history_messages)
         history = [ChatMessage(m.role.value, m.content) for m in stored]
     resolved = _resolve(registry, request, conversation)
+    question = request.message
+    citations: list[Citation] = []
+    if request.use_rag and rag is not None:
+        hits = retrieval_service.retrieve(
+            db,
+            user,
+            rag,
+            request.message,
+            request.embedding,
+            request.chunking,
+            request.corpus_ids,
+        )
+        citations = [retrieval_service.citation(hit) for hit in hits]
+        if hits:
+            question = retriever.grounded_question(request.message, hits)
     return Turn(
         user_id=user.id,
         conversation_id=conversation.id if conversation else None,
         message=request.message,
-        prompt=[*history, ChatMessage("user", request.message)],
+        prompt=[*history, ChatMessage("user", question)],
         resolved=resolved,
         started_at=started_at,
+        use_rag=request.use_rag,
+        corpus_ids=[str(i) for i in request.corpus_ids] if request.corpus_ids else None,
+        citations=citations,
     )
 
 
@@ -95,8 +127,16 @@ def _persist(db: Session, turn: Turn, answer: AskResponse) -> ChatResponse:
         latency_ms=answer.latency_ms,
         cost_usd=answer.cost_usd,
         started_at=turn.started_at,
+        retrieved_chunk_ids=[str(c.chunk_id) for c in turn.citations],
+        use_rag=turn.use_rag,
+        corpus_ids=turn.corpus_ids,
     )
-    return ChatResponse(conversation_id=conversation.id, message_id=reply.id, **answer.model_dump())
+    return ChatResponse(
+        conversation_id=conversation.id,
+        message_id=reply.id,
+        citations=turn.citations,
+        **answer.model_dump(),
+    )
 
 
 def reply(db: Session, turn: Turn) -> ChatResponse:

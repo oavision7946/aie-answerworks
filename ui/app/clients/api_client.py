@@ -20,12 +20,26 @@ class TokenPair(BaseModel):
     must_change_password: bool = False
 
 
+class Citation(BaseModel):
+    """A passage an answer is based on, and how it was indexed."""
+
+    chunk_id: str
+    document_id: str
+    filename: str
+    chunk_index: int = 0
+    text: str = ""
+    score: float | None = None
+    embedding_name: str = ""
+    chunking_name: str = ""
+
+
 class AskResponse(BaseModel):
     answer: str
     provider: str = ""
     model: str
     tokens_used: int
     cost_usd: float | None = None  # None when the model has no pricing configured
+    citations: list[Citation] = []  # passages the answer was grounded in (chat with documents)
 
 
 class ChatResponse(AskResponse):
@@ -41,6 +55,7 @@ class MessageInfo(BaseModel):
     model: str | None = None
     tokens_used: int | None = None
     cost_usd: float | None = None
+    citations: list[Citation] = []
 
 
 class ConversationInfo(BaseModel):
@@ -61,6 +76,98 @@ class UserInfo(BaseModel):
     role: str
     is_active: bool = True
     must_change_password: bool = False
+
+
+class IndexInfo(BaseModel):
+    """One way a document was indexed: embedding model, splitter and the number of chunks."""
+
+    embedding_name: str
+    embedding_model: str
+    embedding_dimensions: int
+    chunking_name: str
+    chunking_method: str
+    chunk_size: int
+    chunk_overlap: int
+    chunk_count: int
+
+
+class DocumentInfo(BaseModel):
+    id: str
+    filename: str
+    size_bytes: int = 0
+    status: str = "ready"
+    error: str | None = None
+    corpus_id: str | None = None
+    indexes: list[IndexInfo] = []
+
+
+class ChunkInfo(BaseModel):
+    id: str
+    chunk_index: int
+    text: str
+    embedding_name: str
+    embedding_model: str
+    embedding_dimensions: int
+    chunking_name: str
+    chunking_method: str
+    chunk_size: int
+    chunk_overlap: int
+
+
+class CorpusInfo(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    is_public: bool = False
+    document_count: int = 0
+    has_source: bool = False
+
+
+class EmbeddingOption(BaseModel):
+    name: str
+    provider: str
+    model: str
+    dimensions: int
+    available: bool = True
+
+    @property
+    def display(self) -> str:
+        return f"{self.name} · {self.model} ({self.dimensions}d)"
+
+
+class ChunkingOption(BaseModel):
+    name: str
+    method: str
+    size: int
+    overlap: int
+
+    @property
+    def display(self) -> str:
+        return f"{self.name} · {self.method} {self.size}/{self.overlap}"
+
+
+class RagOptions(BaseModel):
+    embedding_models: list[EmbeddingOption]
+    chunking_strategies: list[ChunkingOption]
+    default_embedding: str
+    default_chunking: str
+    supported_formats: list[str] = []
+    max_upload_mb: int = 10
+
+
+class IngestResult(BaseModel):
+    embedding_name: str
+    chunking_name: str
+    indexed: list[str] = []
+    failed: dict[str, str] = {}
+
+
+class RagChoice(BaseModel):
+    """What the Chat page asks the API to retrieve from."""
+
+    embedding: str | None = None
+    chunking: str | None = None
+    corpus_ids: list[str] | None = None  # None = every corpus the user can read
 
 
 class ModelInfo(BaseModel):
@@ -245,14 +352,22 @@ def call_streaming_api(
 
 
 def _send(
-    method: str, path: str, token: str | None, json_body: dict[str, Any] | None = None
+    method: str,
+    path: str,
+    token: str | None,
+    json_body: dict[str, Any] | None = None,
+    *,
+    files: dict[str, tuple[str, bytes]] | None = None,
+    form: dict[str, str] | None = None,
 ) -> httpx.Response:
-    """One authenticated JSON call. 401 -> AuthExpired, other errors -> RuntimeError(detail)."""
+    """One authenticated call. 401 -> AuthExpired, other errors -> RuntimeError(detail)."""
     try:
         response = httpx.request(
             method,
             _url(path),
             json=json_body,
+            files=files,
+            data=form,
             headers=_headers(token),
             timeout=config.ASK_TIMEOUT_SECONDS,
         )
@@ -286,20 +401,29 @@ def get_me(token: str | None = None) -> UserInfo:
 # --- conversations and chat ----------------------------------------------------------------------
 
 
-def _chat_payload(message: str, model: ModelInfo, conversation_id: str | None) -> dict[str, Any]:
+def _chat_payload(
+    message: str, model: ModelInfo, conversation_id: str | None, rag: RagChoice | None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"message": message, "model": model.id}
     if model.provider:
         payload["provider"] = model.provider
     if conversation_id:
         payload["conversation_id"] = conversation_id
+    if rag is not None:
+        payload["use_rag"] = True
+        payload.update(rag.model_dump(exclude_none=True))  # [] keeps meaning "no shared corpora"
     return payload
 
 
 def chat(
-    message: str, model: ModelInfo, conversation_id: str | None, token: str | None = None
+    message: str,
+    model: ModelInfo,
+    conversation_id: str | None,
+    rag: RagChoice | None = None,
+    token: str | None = None,
 ) -> ChatResponse:
-    response = _send("POST", "/chat", token, _chat_payload(message, model, conversation_id))
-    return _parse(response, ChatResponse)
+    payload = _chat_payload(message, model, conversation_id, rag)
+    return _parse(_send("POST", "/chat", token, payload), ChatResponse)
 
 
 def chat_streaming(
@@ -307,9 +431,10 @@ def chat_streaming(
     model: ModelInfo,
     conversation_id: str | None,
     render_answer: Callable[[str], Any],
+    rag: RagChoice | None = None,
     token: str | None = None,
 ) -> ChatResponse:
-    payload = _chat_payload(message, model, conversation_id)
+    payload = _chat_payload(message, model, conversation_id, rag)
     return _read_stream("/chat", payload, token, render_answer, ChatResponse)
 
 
@@ -357,3 +482,94 @@ def update_user(
 def reset_password(user_id: str, temporary_password: str, token: str | None = None) -> UserInfo:
     body = {"temporary_password": temporary_password}
     return _parse(_send("POST", f"/admin/users/{user_id}/reset-password", token, body), UserInfo)
+
+
+# --- documents and retrieval ---------------------------------------------------------------------
+
+
+def get_rag_options(token: str | None = None) -> RagOptions:
+    return _parse(_send("GET", "/rag/options", token), RagOptions)
+
+
+def _choice(embedding: str | None, chunking: str | None) -> dict[str, str]:
+    return {k: v for k, v in {"embedding": embedding, "chunking": chunking}.items() if v}
+
+
+def list_documents(corpus_id: str | None = None, token: str | None = None) -> list[DocumentInfo]:
+    path = "/documents" + (f"?corpus_id={corpus_id}" if corpus_id else "")
+    return _parse_list(_send("GET", path, token), DocumentInfo)
+
+
+def upload_document(
+    filename: str,
+    data: bytes,
+    embedding: str | None = None,
+    chunking: str | None = None,
+    corpus_id: str | None = None,
+    token: str | None = None,
+) -> DocumentInfo:
+    form = _choice(embedding, chunking)
+    if corpus_id:
+        form["corpus_id"] = corpus_id
+    response = _send("POST", "/documents", token, files={"file": (filename, data)}, form=form)
+    return _parse(response, DocumentInfo)
+
+
+def index_document(
+    document_id: str, embedding: str | None, chunking: str | None, token: str | None = None
+) -> DocumentInfo:
+    body = _choice(embedding, chunking)
+    return _parse(_send("POST", f"/documents/{document_id}/index", token, body), DocumentInfo)
+
+
+def list_chunks(document_id: str, limit: int = 20, token: str | None = None) -> list[ChunkInfo]:
+    response = _send("GET", f"/documents/{document_id}/chunks?limit={limit}", token)
+    return _parse_list(response, ChunkInfo)
+
+
+def delete_document(document_id: str, token: str | None = None) -> None:
+    _send("DELETE", f"/documents/{document_id}", token)
+
+
+# --- corpora -------------------------------------------------------------------------------------
+
+
+def list_corpora(token: str | None = None) -> list[CorpusInfo]:
+    return _parse_list(_send("GET", "/corpora", token), CorpusInfo)
+
+
+def create_corpus(
+    name: str, description: str, is_public: bool, token: str | None = None
+) -> CorpusInfo:
+    body = {"name": name, "description": description, "is_public": is_public}
+    return _parse(_send("POST", "/corpora", token, body), CorpusInfo)
+
+
+def update_corpus(
+    corpus_id: str, description: str, is_public: bool, token: str | None = None
+) -> CorpusInfo:
+    body = {"description": description, "is_public": is_public}
+    return _parse(_send("PATCH", f"/corpora/{corpus_id}", token, body), CorpusInfo)
+
+
+def delete_corpus(corpus_id: str, token: str | None = None) -> None:
+    _send("DELETE", f"/corpora/{corpus_id}", token)
+
+
+def list_corpus_access(corpus_id: str, token: str | None = None) -> list[UserInfo]:
+    return _parse_list(_send("GET", f"/corpora/{corpus_id}/access", token), UserInfo)
+
+
+def grant_access(corpus_id: str, user_id: str, token: str | None = None) -> None:
+    _send("POST", f"/corpora/{corpus_id}/access", token, {"user_id": user_id})
+
+
+def revoke_access(corpus_id: str, user_id: str, token: str | None = None) -> None:
+    _send("DELETE", f"/corpora/{corpus_id}/access/{user_id}", token)
+
+
+def ingest_corpus(
+    corpus_id: str, embedding: str | None, chunking: str | None, token: str | None = None
+) -> IngestResult:
+    body = _choice(embedding, chunking)
+    return _parse(_send("POST", f"/corpora/{corpus_id}/ingest", token, body), IngestResult)

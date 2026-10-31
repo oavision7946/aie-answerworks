@@ -7,7 +7,7 @@ import httpx
 import respx
 
 from app import config
-from tests.app.helpers import CHAT, CHAT_RESULT, ONE, TWO, new_app
+from tests.app.helpers import CHAT, CHAT_RESULT, ONE, RAG_OPTIONS, TWO, new_app
 
 BASE = config.API_BASE_URL.rstrip("/")
 
@@ -21,6 +21,7 @@ class TestChatPage(unittest.TestCase):
         mock = respx.mock(assert_all_called=False)
         mock.start()
         self.addCleanup(mock.stop)
+        mock.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
         self.models = mock.get(f"{BASE}/models").respond(json=ONE)
         self.chat = mock.post(f"{BASE}/chat").respond(json=CHAT_RESULT)
         self.mock = mock

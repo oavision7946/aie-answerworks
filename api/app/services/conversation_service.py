@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Conversation, User
 from app.db.repositories import conversation_repo
-from app.schemas.chat import ConversationCreate, ConversationUpdate
+from app.schemas.chat import ConversationCreate, ConversationDetail, ConversationUpdate
 from app.services.llm.registry import ProviderRegistry
+from app.services.rag import retriever
+from app.services.rag.retrieval_service import citation
 
 DEFAULT_TITLE = "New conversation"
 TITLE_LENGTH = 60
@@ -50,3 +52,14 @@ def rename(
 
 def delete(db: Session, user: User, conversation_id: uuid.UUID) -> None:
     conversation_repo.delete(db, get(db, user, conversation_id))
+
+
+def detail(db: Session, user: User, conversation_id: uuid.UUID) -> ConversationDetail:
+    """The conversation with its messages; answers carry the passages they cited (if visible)."""
+    conversation = get(db, user, conversation_id)
+    result = ConversationDetail.model_validate(conversation)
+    for message, stored in zip(result.messages, conversation.messages, strict=True):
+        if stored.retrieved_chunk_ids:
+            hits = retriever.cited(db, user, stored.retrieved_chunk_ids)
+            message.citations = [citation(hit) for hit in hits]
+    return result

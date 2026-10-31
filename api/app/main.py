@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api import health
 from app.api.errors import register_exception_handlers
-from app.api.v1 import admin_users, ask, auth, chat, conversations
+from app.api.v1 import admin_users, ask, auth, chat, conversations, corpora, documents, rag
 
 app = FastAPI(title="AnswerWorks API")
 register_exception_handlers(app)
@@ -13,6 +13,9 @@ app.include_router(admin_users.router)
 app.include_router(ask.router)
 app.include_router(conversations.router)
 app.include_router(chat.router)
+app.include_router(documents.router)
+app.include_router(corpora.router)
+app.include_router(rag.router)
 
 
 @app.get("/", include_in_schema=False)

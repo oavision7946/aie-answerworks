@@ -10,6 +10,7 @@ from openai import (
     OpenAI,
     OpenAIError,
     RateLimitError,
+    omit,
 )
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -48,6 +49,8 @@ def usage_from(usage: Any) -> Usage:
 class OpenAIProvider(Provider):
     # Hosted OpenAI always reports usage; local servers may not (see LocalProvider).
     requires_usage = True
+    # Hosted text-embedding-3 models accept a `dimensions` parameter; many local servers reject it.
+    sends_dimensions = True
 
     def __init__(
         self,
@@ -97,6 +100,24 @@ class OpenAIProvider(Provider):
             raise IncompleteResponseError("response had no message content")
         return Completion(text=content, usage=self._usage(getattr(response, "usage", None)))
 
+    def embed(
+        self, model: str, texts: list[str], dimensions: int | None = None
+    ) -> list[list[float]]:
+        wanted = dimensions if dimensions and self.sends_dimensions else omit
+        try:
+            response = self.client.embeddings.create(
+                model=model,
+                input=texts,
+                dimensions=wanted,
+                timeout=self.request.timeout_seconds,
+            )
+        except OpenAIError as exc:
+            raise translate_error(exc) from exc
+        data = sorted(getattr(response, "data", None) or [], key=lambda item: item.index)
+        if len(data) != len(texts):
+            raise IncompleteResponseError("response had the wrong number of embeddings")
+        return [list(item.embedding) for item in data]
+
     def stream(self, model: str, messages: list[ChatMessage]) -> Iterator[StreamEvent]:
         try:
             response = self.client.chat.completions.create(
@@ -128,6 +149,7 @@ class LocalProvider(OpenAIProvider):
     """An OpenAI-compatible server. The API key is optional and usage may be missing."""
 
     requires_usage = False
+    sends_dimensions = False
 
     def __init__(
         self,

@@ -40,6 +40,7 @@ def open_conversation(detail: ConversationDetail) -> None:
                         "model": m.model or "",
                         "tokens_used": m.tokens_used or 0,
                         "cost_usd": m.cost_usd,
+                        "citations": [c.model_dump() for c in m.citations],
                     }
                     if m.role == "assistant" and m.model
                     else None

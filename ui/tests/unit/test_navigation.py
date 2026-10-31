@@ -7,7 +7,7 @@ class TestVisiblePages(unittest.TestCase):
     def test_users_do_not_get_admin_pages(self):
         titles = [p.title for p in visible_pages(is_admin=False)]
 
-        self.assertEqual(titles, ["Chat", "Conversations", "Ask"])
+        self.assertEqual(titles, ["Chat", "Conversations", "Documents", "Ask"])
 
     def test_admins_get_everything(self):
         self.assertEqual(visible_pages(is_admin=True), list(PAGES))

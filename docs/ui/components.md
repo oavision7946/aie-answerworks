@@ -4,10 +4,11 @@
 |---|---|
 | `app/main.py` | Page config, sign-in gate, password-change gate, navigation |
 | `app/navigation.py` | `PAGES` and `visible_pages(is_admin)`: the page list and who sees it |
-| `app/views/` | One script per page: `chat`, `conversations`, `ask`, `admin_users` |
+| `app/views/` | One script per page: `chat`, `conversations`, `documents`, `ask`, `admin_users`, `admin_corpora` |
 | `app/components/auth.py` | Sign-in form and forced password-change form |
 | `app/components/account.py` | Sidebar brand, signed-in email, sign out, API address |
 | `app/components/models.py` | Model picker; prefers a given (provider, model), else the API's default |
+| `app/components/rag.py` | Embedding/splitting pickers, index summary rows, the Sources section and the Chat sidebar's document controls |
 | `app/components/chat.py` | Welcome banner and the model/tokens/cost line under answers |
 | `app/state/auth.py` | Session tokens and role; `call_authenticated` refreshes once or signs out |
 | `app/state/chat.py` | The open conversation: id, title and displayed messages |

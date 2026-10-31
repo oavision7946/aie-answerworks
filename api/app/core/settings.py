@@ -92,20 +92,24 @@ class ProvidersConfig(_Strict):
 # --- rag.yaml ---------------------------------------------------------------------------------
 
 
-class EmbeddingsConfig(_Strict):
+class EmbeddingModelConfig(_Strict):
     provider: str
     model: str
     dimensions: int = Field(gt=0)
 
 
+ChunkingMethod = Literal["fixed", "recursive", "paragraph", "sentence"]
+
+
 class ChunkingConfig(_Strict):
+    method: ChunkingMethod
     size: int = Field(gt=0)
     overlap: int = Field(ge=0)
 
     @model_validator(mode="after")
     def overlap_must_be_smaller_than_size(self) -> "ChunkingConfig":
         if self.overlap >= self.size:
-            raise ValueError("chunking.overlap must be smaller than chunking.size")
+            raise ValueError("chunking overlap must be smaller than size")
         return self
 
 
@@ -119,11 +123,21 @@ class VectorStoreConfig(_Strict):
 
 
 class RagConfig(_Strict):
-    embeddings: EmbeddingsConfig
-    chunking: ChunkingConfig
+    embedding_models: dict[str, EmbeddingModelConfig] = Field(min_length=1)
+    default_embedding: str
+    chunking_strategies: dict[str, ChunkingConfig] = Field(min_length=1)
+    default_chunking: str
     retrieval: RetrievalConfig
     vector_store: VectorStoreConfig
     supported_formats: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def defaults_must_exist(self) -> "RagConfig":
+        if self.default_embedding not in self.embedding_models:
+            raise ValueError(f"default_embedding {self.default_embedding!r} is not defined")
+        if self.default_chunking not in self.chunking_strategies:
+            raise ValueError(f"default_chunking {self.default_chunking!r} is not defined")
+        return self
 
 
 # --- app.yaml ---------------------------------------------------------------------------------
@@ -163,10 +177,15 @@ class AppConfig(_Strict):
 # --- corpora.yaml -----------------------------------------------------------------------------
 
 
+class CorpusSource(_Strict):
+    type: Literal["filesystem"]
+    path: str
+
+
 class CorpusConfig(_Strict):
     name: str
     description: str = ""
-    source: dict[str, str]
+    source: CorpusSource
     public: bool = False
 
 
@@ -205,11 +224,17 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def cross_references_must_resolve(self) -> "Settings":
-        if self.rag.embeddings.provider not in self.providers.providers:
-            raise ValueError(
-                f"rag.embeddings.provider {self.rag.embeddings.provider!r} "
-                "is not defined in providers.yaml"
-            )
+        for name, embedding in self.rag.embedding_models.items():
+            provider = self.providers.providers.get(embedding.provider)
+            if provider is None:
+                raise ValueError(
+                    f"rag.embedding_models.{name}: provider {embedding.provider!r} "
+                    "is not defined in providers.yaml"
+                )
+            if provider.type == "anthropic":
+                raise ValueError(
+                    f"rag.embedding_models.{name}: anthropic providers cannot create embeddings"
+                )
         return self
 
     def missing_provider_keys(self) -> dict[str, str]:

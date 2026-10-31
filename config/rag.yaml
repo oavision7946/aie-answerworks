@@ -1,11 +1,45 @@
-embeddings:
-  provider: openai          # must reference a provider in providers.yaml
-  model: text-embedding-3-small
-  dimensions: 1536
+# Embedding models and chunking (text splitting) strategies are named, so several can coexist.
+# Every stored chunk records which of each produced it; retrieval only compares vectors made
+# by the same embedding model and split by the same strategy as the query.
 
-chunking:
-  size: 800
-  overlap: 120
+# provider must be defined in providers.yaml and be able to embed (openai, openai_compatible, fake).
+# dimensions is the vector length the model returns (for OpenAI text-embedding-3 models it is
+# also requested from the API).
+embedding_models:
+  openai-small:
+    provider: openai
+    model: text-embedding-3-small
+    dimensions: 1536
+  openai-large:
+    provider: openai
+    model: text-embedding-3-large
+    dimensions: 3072
+  local-nomic:
+    provider: local
+    model: nomic-embed-text
+    dimensions: 768
+default_embedding: openai-small
+
+# method: fixed (sliding window), recursive (paragraph, line, sentence, word), paragraph, sentence.
+# size and overlap are in characters; overlap must be smaller than size.
+chunking_strategies:
+  recursive:
+    method: recursive
+    size: 800
+    overlap: 120
+  paragraph:
+    method: paragraph
+    size: 1200
+    overlap: 0
+  sentence:
+    method: sentence
+    size: 500
+    overlap: 100
+  fixed:
+    method: fixed
+    size: 1000
+    overlap: 200
+default_chunking: recursive
 
 retrieval:
   top_k: 5

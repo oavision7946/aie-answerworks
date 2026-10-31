@@ -196,6 +196,85 @@ class TestOpenAIProvider(unittest.TestCase):
         self.assertIs(type(translate_error(ValueError("odd"))), ProviderError)
 
 
+def embeddings_body(vectors):
+    return {
+        "object": "list",
+        "model": "m",
+        "usage": {"prompt_tokens": 3, "total_tokens": 3},
+        "data": [
+            {"object": "embedding", "index": i, "embedding": v} for i, v in enumerate(vectors)
+        ],
+    }
+
+
+class TestEmbeddings(unittest.TestCase):
+    def setUp(self):
+        self.up = Upstream()
+        self.openai = OpenAIProvider(
+            "openai",
+            config("openai", api_key_env="K"),
+            REQUEST,
+            "sk-test",
+            http_client=self.up.client(),
+        )
+        self.local = LocalProvider(
+            "local",
+            config("openai_compatible", base_url="http://localhost:11434/v1"),
+            REQUEST,
+            None,
+            http_client=self.up.client(),
+        )
+
+    def test_openai_returns_vectors_in_input_order_and_requests_dimensions(self):
+        body = embeddings_body([[1.0, 0.0], [0.0, 1.0]])
+        body["data"].reverse()  # the API may answer out of order; `index` decides
+        self.up.reply(json_body=body)
+
+        vectors = self.openai.embed("text-embedding-3-small", ["a", "b"], 2)
+
+        self.assertEqual(vectors, [[1.0, 0.0], [0.0, 1.0]])
+        sent = json.loads(self.up.last.content)
+        self.assertEqual(sent["model"], "text-embedding-3-small")
+        self.assertEqual(sent["input"], ["a", "b"])
+        self.assertEqual(sent["dimensions"], 2)
+        self.assertTrue(str(self.up.last.url).endswith("/v1/embeddings"))
+
+    def test_local_servers_are_not_sent_a_dimensions_parameter(self):
+        self.up.reply(json_body=embeddings_body([[0.5, 0.5]]))
+
+        self.assertEqual(self.local.embed("nomic-embed-text", ["a"], 2), [[0.5, 0.5]])
+
+        self.assertNotIn("dimensions", json.loads(self.up.last.content))
+        self.assertTrue(str(self.up.last.url).startswith("http://localhost:11434/v1/embeddings"))
+
+    def test_wrong_number_of_vectors_is_an_incomplete_response(self):
+        self.up.reply(json_body=embeddings_body([[1.0]]))
+
+        with self.assertRaises(IncompleteResponseError):
+            self.openai.embed("m", ["a", "b"], 1)
+
+    def test_errors_are_translated(self):
+        self.up.reply(500, {"error": {"message": "boom"}})
+        with self.assertRaises(TransientProviderError):
+            self.openai.embed("m", ["a"])
+        self.up.reply(400, {"error": {"message": "bad"}})
+        with self.assertRaises(ProviderError) as caught:
+            self.openai.embed("m", ["a"])
+        self.assertNotIsInstance(caught.exception, TransientProviderError)
+
+    def test_anthropic_has_no_embeddings(self):
+        provider = AnthropicProvider(
+            "anthropic",
+            config("anthropic", api_key_env="K"),
+            REQUEST,
+            "k",
+            http_client=Upstream().client(),
+        )
+
+        with self.assertRaisesRegex(ProviderError, "does not support embeddings"):
+            provider.embed("m", ["a"])
+
+
 class TestLocalProvider(unittest.TestCase):
     def setUp(self):
         self.up = Upstream()

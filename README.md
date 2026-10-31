@@ -2,7 +2,7 @@
 
 One interface (API + UI) for working with several AI models, with retrieval-augmented generation (RAG) so answers can be grounded in your own documents.
 
-> **Project status: early development.** The model layer, admin-created accounts with login, saved conversations, and a web UI with chat, conversation history, question-answer and user administration work today; RAG is planned and not built. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
+> **Project status: early development.** The model layer, admin-created accounts with login, saved conversations, and a web UI with chat, conversation history, question-answer and user administration work today, and so does RAG: upload documents, share corpora, and get answers with sources. See [What works today](#what-works-today) and the [roadmap](#roadmap) before relying on anything here.
 
 FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration in YAML, secrets in `.env`.
 
@@ -13,13 +13,14 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - **Saved conversations:** `POST /chat` sends a message into a conversation (or starts a new one) and the model sees the earlier messages. Conversations and messages are stored in PostgreSQL per user, with provider, model, tokens, latency and cost on every reply, and nobody else can read, rename or delete them. List, read, rename and delete through `/conversations`. Streaming works here too.
 - **Question-answer endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
 - **Transparent usage:** every answer reports provider, model, token count, latency and estimated cost. Cost is `null` for models with no pricing configured.
-- **Web UI:** a Streamlit app with sign-in, a forced password-change screen and four pages: **Chat** (saved conversations with a model picker, streaming and per-answer usage), **Conversations** (open, rename, delete), **Ask** (one-off question-answer, nothing saved) and, for admins only, **Admin · Users** (create accounts, change roles, deactivate, reset passwords).
+- **Web UI:** a Streamlit app with sign-in, a forced password-change screen and these pages: **Chat** (saved conversations with a model picker, streaming, per-answer usage and optional document sources), **Conversations** (open, rename, delete), **Documents** (your uploads and the shared corpora you can read, with how each was indexed), **Ask** (one-off question-answer, nothing saved) and, for admins only, **Admin · Users** and **Admin · Corpora**.
+- **RAG (answers from your documents):** upload PDF, TXT or Markdown files (private to you) or have an admin build shared corpora, then turn on documents in Chat or pass `use_rag` to `/chat`. Answers cite the passages they used. **Embedding models and text-splitting strategies are configurable and interchangeable** (several can be defined in [config/rag.yaml](config/rag.yaml)), and every stored chunk records which embedding model and which splitter produced it, so a document can be indexed several ways and compared. Retrieval is strictly scoped: your private documents never reach another user, and shared corpora are visible only to users with a grant (or to everyone if public), with revocation applying immediately. See [docs/rag.md](docs/rag.md).
 - **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
 ### Not built yet
 
-RAG (document upload, shared corpora, retrieval with citations) and its UI pages. The configuration files for RAG (`config/rag.yaml`, `config/corpora.yaml`) are in place, but nothing reads them yet. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
+Docker Compose packaging, the documentation site and end-to-end tests (see the [roadmap](#roadmap)). Deliberately simple for now: uploads are indexed while the request waits, similarity search is exact (no approximate vector index), and only PDF, TXT and Markdown are parsed. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
 
 ## Prerequisites
 
@@ -400,6 +401,188 @@ curl -s localhost:8000/admin/users -H "Authorization: Bearer $ANA"     # 403
 
 Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy` to delete the data), then `make clean` to remove caches.
 
+## Demo: your documents (RAG)
+
+Builds on the web-app demo. You will upload a document, see exactly how it was split and embedded, index it a second way with a different embedding model and splitter, ask questions with and without documents, check that other users cannot see your files, and share a corpus. Every UI step has a "Same from the API" curl equivalent.
+
+The keyless setup uses the fake provider's embeddings, which are a hashed bag of words: they find passages that **share words** with your question, which is enough to see the whole mechanism. Real embedding models also match meaning. With real keys, use the `openai-*` models from `rag.yaml` instead.
+
+**1. Prepare (keyless)**
+
+Start from the first demo (database, `make migrate`, the private copy of the config in `/tmp/aw-config`, the first admin, `make run-api` and `make run-ui`). The pgvector tables come from the same `make migrate`; run it again if you set the system up before documents existed. Then give the private config two fake embedding models and a few splitting strategies, and restart `make run-api`:
+
+```bash
+cat > /tmp/aw-config/rag.yaml <<'EOF'
+embedding_models:
+  fake-small: { provider: fake, model: fake-small, dimensions: 256 }
+  fake-large: { provider: fake, model: fake-large, dimensions: 512 }
+default_embedding: fake-small
+chunking_strategies:
+  recursive: { method: recursive, size: 200, overlap: 30 }
+  sentence:  { method: sentence,  size: 120, overlap: 30 }
+  fixed:     { method: fixed,     size: 100, overlap: 20 }
+default_chunking: recursive
+retrieval: { top_k: 3, min_score: 0.0 }
+vector_store: { type: pgvector }
+supported_formats: [pdf, txt, md]
+EOF
+```
+
+Then, in a terminal, sign in and look at what can be chosen:
+
+```bash
+login() {
+  curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
+}
+TOKEN=$(login admin@example.com 'admin passphrase 1')
+curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
+```
+
+`/rag/options` lists the embedding models, the splitting strategies and the defaults. Embedding models whose provider is not running show `"available": false` and cannot be used.
+
+**2. Upload a document**
+
+Create a file to upload:
+
+```bash
+cat > /tmp/penguins.txt <<'EOF'
+Penguins live in the Southern Hemisphere, mostly in Antarctica. They eat fish and krill.
+Emperor penguins huddle together to stay warm during the Antarctic winter.
+Volcanoes are different: they erupt molten lava from magma chambers beneath the crust.
+EOF
+```
+
+In the app open **Documents**. Under **My uploads** choose the file, leave the default embedding model and text splitting, and press **Upload and index**.
+
+Same from the API:
+
+```bash
+curl -s localhost:8000/documents -H "Authorization: Bearer $TOKEN" -F file=@/tmp/penguins.txt
+```
+
+The response lists `indexes`: which embedding model (name, model, dimensions), which splitting strategy (method, size, overlap) and how many chunks that produced.
+
+**3. See how it was indexed**
+
+On the Documents page, open the document: **How it was indexed** is a table of embedding model and splitter, and **Show chunks** lists the stored passages with the index recorded on each one.
+
+Same from the API:
+
+```bash
+DOC=<the id from step 2>
+curl -s localhost:8000/documents/$DOC/chunks -H "Authorization: Bearer $TOKEN"
+```
+
+Each chunk carries `embedding_name`, `embedding_model`, `embedding_dimensions`, `chunking_method`, `chunk_size` and `chunk_overlap`. That record is what lets you tell, for any vector in the database, which model made it and which splitter cut its text.
+
+**4. Index the same document a second way**
+
+Still in the document's box, under **Add another index** choose `fake-large` and `sentence`, then **Index with these settings**. The table now shows two rows with different chunk counts.
+
+Same from the API:
+
+```bash
+curl -s localhost:8000/documents/$DOC/index -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"embedding": "fake-large", "chunking": "sentence"}'
+```
+
+**5. Compare what each index retrieves**
+
+Only chunks of the chosen index are compared, because vectors from different models (and sizes) cannot be compared with each other. Search with each setup and look at the passages and scores:
+
+```bash
+search() {
+  curl -s localhost:8000/rag/search -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$1" \
+    | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["embedding_name"],d["chunking_name"]);[print(" ",h["score"],h["text"][:70]) for h in d["hits"]]'
+}
+search '{"query": "what do penguins eat"}'
+search '{"query": "what do penguins eat", "embedding": "fake-large", "chunking": "sentence"}'
+search '{"query": "what do penguins eat", "chunking": "fixed"}'      # nothing: no chunks made this way yet
+```
+
+The last search finds nothing because the document has not been indexed with `fixed` yet. Index it that way (as in step 4) and repeat.
+
+**6. Chat with your documents**
+
+In **Chat**, switch on **Answer from my documents** in the sidebar (open **Retrieval settings** to pick the embedding model, splitter and shared corpora) and ask "What do penguins eat?". Under the answer, **Sources** shows the passages used, their similarity and the index they came from. With the fake provider the answer echoes the prompt, so you can read the excerpts that were sent to the model. Ask the same with the switch off to see the difference.
+
+Same from the API:
+
+```bash
+curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message": "What do penguins eat?", "use_rag": true, "embedding": "fake-small", "chunking": "recursive"}'
+```
+
+The response has `citations`. Open the conversation again (Conversations, then Open, or `GET /conversations/<id>`): the sources are kept with the answer.
+
+**7. Private means private**
+
+Sign in as another user (see [Adding users](#adding-users-admin)) and open **Documents**: your upload is not there, and a search finds none of it:
+
+```bash
+ANA=$(login ana@example.com '<ana new password>')
+curl -s localhost:8000/documents -H "Authorization: Bearer $ANA"            # []
+curl -s localhost:8000/documents/$DOC -H "Authorization: Bearer $ANA"       # 404
+search_as_ana() {
+  curl -s localhost:8000/rag/search -H "Authorization: Bearer $ANA" -H 'Content-Type: application/json' \
+    -d '{"query": "penguins Antarctica"}'
+}
+search_as_ana                                                               # no hits
+```
+
+Not even an admin can open, search or delete another user's private upload.
+
+**8. Share a corpus (admin)**
+
+In **Admin · Corpora** create a corpus called `handbook`, upload `/tmp/penguins.txt` into it, and grant `ana@example.com`. Back as ana, **Documents** then **Shared corpora** shows it (read-only) and chat can use it. Press **Revoke** and ana's next search finds nothing again.
+
+Same from the API:
+
+```bash
+CORPUS=$(curl -s localhost:8000/corpora -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name": "handbook", "description": "Demo corpus"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+curl -s localhost:8000/documents -H "Authorization: Bearer $TOKEN" -F file=@/tmp/penguins.txt -F corpus_id=$CORPUS
+ANA_ID=$(curl -s localhost:8000/auth/me -H "Authorization: Bearer $ANA" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+search_as_ana                                                               # no hits yet
+curl -s -X POST localhost:8000/corpora/$CORPUS/access -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d "{\"user_id\": \"$ANA_ID\"}"
+search_as_ana                                                               # hits from handbook
+curl -s -X DELETE localhost:8000/corpora/$CORPUS/access/$ANA_ID -H "Authorization: Bearer $TOKEN"
+search_as_ana                                                               # no hits again
+```
+
+Setting `"is_public": true` (`PATCH /corpora/$CORPUS`) makes a corpus readable by every user instead of by grant.
+
+**9. Ingest a folder (optional)**
+
+Corpora can also be filled from a folder, declared in the private copy of `corpora.yaml`:
+
+```bash
+mkdir -p /tmp/aw-handbook && cp /tmp/penguins.txt /tmp/aw-handbook/
+cat > /tmp/aw-config/corpora.yaml <<'EOF'
+corpora:
+  - name: folder-demo
+    description: Files from a folder
+    source: { type: filesystem, path: /tmp/aw-handbook }
+EOF
+make ingest ARGS="--corpus folder-demo"                                         # default embedding and splitter
+make ingest ARGS="--corpus folder-demo --embedding fake-large --chunking fixed" # a second index
+```
+
+The corpus appears in **Admin · Corpora** with its documents and both indexes. Run the command again after editing the files to refresh them. A file that cannot be read is kept as `failed` with the reason.
+
+**10. Clean up**
+
+Stop `make run-ui` and `make run-api`, then:
+
+```bash
+make db-down              # keeps the data; `make db-destroy` deletes it
+rm -rf /tmp/aw-config /tmp/aw-handbook /tmp/penguins.txt
+unset ANSWERWORKS_CONFIG_DIR
+make clean
+```
+
 ## API access in short
 
 | Endpoint | Who | Purpose |
@@ -423,13 +606,13 @@ Details are in [api/README.md](api/README.md) and the interactive docs at `/docs
 |---|---|
 | [config/providers.yaml](config/providers.yaml) | Providers, their models, optional per-model pricing (USD per 1M tokens), timeouts, retries and the default provider |
 | [config/app.yaml](config/app.yaml) | App name and environment, CORS origins, auth token lifetimes, how many past messages chat sends to the model, upload limit |
-| [config/rag.yaml](config/rag.yaml) | Embeddings, chunking and retrieval settings (reserved for RAG) |
-| [config/corpora.yaml](config/corpora.yaml) | Shared document collections (reserved for RAG) |
+| [config/rag.yaml](config/rag.yaml) | Named embedding models and text-splitting strategies (with defaults), retrieval settings and accepted file types |
+| [config/corpora.yaml](config/corpora.yaml) | Shared corpora to ingest from a folder with `make ingest` |
 | `.env` | Secrets and deployment values only: provider API keys, `DATABASE_URL`, `JWT_SECRET` (at least 16 characters), and optionally `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` for `make create-admin`. Never committed |
 
 All YAML is validated at startup, so a typo or a broken reference fails loudly instead of silently misbehaving. Set `ANSWERWORKS_CONFIG_DIR` to use a different config directory.
 
-To add a model, add an entry under its provider in `providers.yaml`. To add a different kind of backend, see [api/README.md](api/README.md).
+To add a model, add an entry under its provider in `providers.yaml`. To try another embedding model or splitting strategy, add an entry to `embedding_models` or `chunking_strategies` in `rag.yaml`; documents can be indexed with several (see [docs/rag.md](docs/rag.md)). To add a different kind of backend, see [api/README.md](api/README.md).
 
 ## Development
 
@@ -448,8 +631,8 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | `api/` | FastAPI backend and its tests; see [api/README.md](api/README.md) |
 | `ui/` | Streamlit frontend and its tests; see [ui/README.md](ui/README.md) |
 | `config/` | Non-secret YAML configuration |
-| `docs/` | Documentation: authentication, authorization, conversations, data model, UI, admin guide |
-| `Makefile` | Install, run, test, lint, migrate, create-admin and local-database commands |
+| `docs/` | Documentation: authentication, authorization, conversations, documents and RAG, data model, UI, admin guide |
+| `Makefile` | Install, run, test, lint, migrate, create-admin, ingest and local-database commands |
 
 `api/` and `ui/` are separate uv projects with their own environments, which is why `make install` syncs both.
 
@@ -463,8 +646,8 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | 4 | Auth and users: login, JWT, roles, admin-created accounts | Done |
 | 5 | Conversations and chat: persistence and streaming (API) | Done |
 | 6 | UI: chat, conversations, question-answer and admin users pages | Done |
-| 7 | RAG: documents, shared corpora, retrieval with citations | Next |
-| 8 | Docker Compose, docs site, end-to-end tests | Planned |
+| 7 | RAG: documents, shared corpora, configurable embedding models and splitters, retrieval with citations | Done |
+| 8 | Docker Compose, docs site, end-to-end tests | Next |
 
 ## License
 

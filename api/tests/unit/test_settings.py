@@ -41,7 +41,13 @@ class TestRepoConfigIsValid(unittest.TestCase):
         gpt = next(m for m in loaded.providers.providers["openai"].models if m.id == "gpt-4o-mini")
         self.assertEqual(gpt.pricing.input, 0.15)
         self.assertEqual(gpt.pricing.cached_input_price, 0.075)
-        self.assertEqual(loaded.rag.chunking.size, 800)
+        self.assertEqual(loaded.rag.default_embedding, "openai-small")
+        self.assertEqual(loaded.rag.embedding_models["openai-large"].dimensions, 3072)
+        self.assertEqual(loaded.rag.chunking_strategies[loaded.rag.default_chunking].size, 800)
+        self.assertEqual(
+            {c.method for c in loaded.rag.chunking_strategies.values()},
+            {"fixed", "recursive", "paragraph", "sentence"},
+        )
         self.assertEqual(loaded.rag.retrieval.top_k, 5)
         self.assertEqual(loaded.corpora.corpora, [])
         self.assertEqual(loaded.app.auth.access_token_ttl_minutes, 15)
@@ -140,9 +146,9 @@ class TestProvidersValidation(unittest.TestCase):
 
 class TestOtherValidation(unittest.TestCase):
     def test_chunk_overlap_must_be_smaller_than_size(self):
-        ChunkingConfig(size=10, overlap=9)
+        ChunkingConfig(method="fixed", size=10, overlap=9)
         with self.assertRaisesRegex(ValidationError, "overlap"):
-            ChunkingConfig(size=10, overlap=10)
+            ChunkingConfig(method="fixed", size=10, overlap=10)
 
     def test_corpus_names_must_be_unique(self):
         corpus = {"name": "a", "source": {"type": "filesystem", "path": "./a"}}
@@ -150,21 +156,41 @@ class TestOtherValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "unique"):
             CorporaConfig.model_validate({"corpora": [corpus, corpus]})
 
-    def test_embeddings_provider_must_exist_in_providers(self):
+    def load_with(self, edit):
+        """load_settings() against a copy of the shipped config with `edit(rag)` applied."""
         with tempfile.TemporaryDirectory() as tmp:
             for name in ("app.yaml", "providers.yaml", "rag.yaml", "corpora.yaml"):
                 (Path(tmp) / name).write_text((CONFIG / name).read_text())
             rag = yaml.safe_load((Path(tmp) / "rag.yaml").read_text())
-            rag["embeddings"]["provider"] = "ghost"
+            edit(rag)
             (Path(tmp) / "rag.yaml").write_text(yaml.safe_dump(rag))
 
             with patch.dict(os.environ, {"ANSWERWORKS_CONFIG_DIR": tmp}):
                 config.clear_config_cache()
                 try:
-                    with self.assertRaisesRegex(ValidationError, "embeddings.provider"):
-                        load_settings()
+                    return load_settings()
                 finally:
                     config.clear_config_cache()
+
+    def test_embedding_provider_must_exist_in_providers(self):
+        def edit(rag):
+            rag["embedding_models"]["openai-small"]["provider"] = "ghost"
+
+        with self.assertRaisesRegex(ValidationError, "provider 'ghost'"):
+            self.load_with(edit)
+
+    def test_anthropic_cannot_create_embeddings(self):
+        def edit(rag):
+            rag["embedding_models"]["openai-small"]["provider"] = "anthropic"
+
+        with self.assertRaisesRegex(ValidationError, "cannot create embeddings"):
+            self.load_with(edit)
+
+    def test_default_embedding_and_chunking_must_be_defined(self):
+        with self.assertRaisesRegex(ValidationError, "default_embedding"):
+            self.load_with(lambda rag: rag.update(default_embedding="nope"))
+        with self.assertRaisesRegex(ValidationError, "default_chunking"):
+            self.load_with(lambda rag: rag.update(default_chunking="nope"))
 
 
 if __name__ == "__main__":

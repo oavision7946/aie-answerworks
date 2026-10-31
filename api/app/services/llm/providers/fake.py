@@ -1,5 +1,8 @@
 """Deterministic provider for tests, demos and E2E runs. No network, no key."""
 
+import hashlib
+import math
+import re
 from collections import deque
 from collections.abc import Iterator
 
@@ -16,6 +19,18 @@ from app.services.llm.base import (
 
 Step = str | Exception | Completion
 
+DEFAULT_EMBEDDING_DIMENSIONS = 64
+
+
+def embed_text(text: str, dimensions: int) -> list[float]:
+    """Hashed bag of words, L2-normalised: texts that share words get a high cosine similarity."""
+    vector = [0.0] * dimensions
+    for word in re.findall(r"\w+", text.lower()):
+        digest = hashlib.sha256(word.encode()).digest()
+        vector[int.from_bytes(digest[:4], "big") % dimensions] += 1.0
+    norm = math.sqrt(sum(x * x for x in vector))
+    return [x / norm for x in vector] if norm else vector
+
 
 class FakeProvider(Provider):
     """Echoes the last user message. Tests can script the next calls with `script(...)`.
@@ -28,6 +43,7 @@ class FakeProvider(Provider):
         super().__init__(name, config, request)
         self._steps: deque[Step] = deque()
         self.calls: list[tuple[str, list[ChatMessage]]] = []
+        self.embed_calls: list[tuple[str, list[str]]] = []
 
     def script(self, *steps: Step) -> "FakeProvider":
         self._steps.extend(steps)
@@ -50,6 +66,13 @@ class FakeProvider(Provider):
     def _usage(messages: list[ChatMessage], answer: str) -> Usage:
         prompt_words = sum(len(m.content.split()) for m in messages)
         return Usage(input_tokens=prompt_words, output_tokens=len(answer.split()))
+
+    def embed(
+        self, model: str, texts: list[str], dimensions: int | None = None
+    ) -> list[list[float]]:
+        """Deterministic embeddings; the model name only labels them. Calls are recorded."""
+        self.embed_calls.append((model, list(texts)))
+        return [embed_text(text, dimensions or DEFAULT_EMBEDDING_DIMENSIONS) for text in texts]
 
     def complete(self, model: str, messages: list[ChatMessage]) -> Completion:
         self.calls.append((model, messages))

@@ -48,9 +48,9 @@ def list_conversations(
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
-def get_conversation(conversation_id: uuid.UUID, db: Db, user: Me) -> Conversation:
+def get_conversation(conversation_id: uuid.UUID, db: Db, user: Me) -> ConversationDetail:
     try:
-        return conversation_service.get(db, user, conversation_id)
+        return conversation_service.detail(db, user, conversation_id)
     except ConversationNotFoundError:
         raise NOT_FOUND from None
 

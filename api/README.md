@@ -30,6 +30,16 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
   `PATCH /conversations/{id}` (`title`), `DELETE /conversations/{id}` (204). Every lookup is
   scoped to the signed-in user: someone else's conversation answers 404, same as a missing one.
 
+- `GET /rag/options`, `POST /rag/search` – the configured embedding models (with availability) and
+  splitting strategies; retrieval without a language model.
+- `POST /documents` (multipart `file`, optional `embedding`, `chunking`, admin-only `corpus_id`),
+  `GET /documents` (`?corpus_id=`), `GET /documents/{id}`, `GET /documents/{id}/chunks`,
+  `POST /documents/{id}/index` (index again with another model/strategy), `DELETE /documents/{id}`.
+- `GET /corpora`; admin only: `POST /corpora`, `PATCH`, `DELETE /corpora/{id}`,
+  `GET|POST /corpora/{id}/access`, `DELETE /corpora/{id}/access/{user_id}`, `POST /corpora/{id}/ingest`.
+- `POST /chat` also accepts `use_rag`, `embedding`, `chunking`, `corpus_ids` and returns `citations`.
+  See `docs/api/documents.md` and `docs/rag.md`.
+
 ## Authentication
 
 Send `Authorization: Bearer <access_token>`. Everything except `/health`, `/auth/login` and
@@ -72,6 +82,7 @@ config, then `ANSWERWORKS_CONFIG_DIR=/path/to/copy make run-api`.
 `app/main.py` (app wiring) · `app/api/` (routes, error handlers) · `app/schemas/` · `app/db/repositories/` · `scripts/` ·
 `app/services/llm/` (provider interface, adapters, registry, chat service, retry, cost) · `app/core/config.py` (YAML/.env).
 Chat: `app/services/chat_service.py` (prompt from history, provider call, persistence), `app/services/conversation_service.py`, `app/db/repositories/conversation_repo.py`, `app/api/v1/{chat,conversations}.py`.
+RAG: `app/services/rag/` (`chunking`, `parsers`, `sources/`, `embeddings`, `index` (embedding model + strategy and the metadata stored on every chunk), `vector_store/` (pgvector), `retriever` (the visibility rule), `ingestion`, and the document/corpus/retrieval services), `app/api/v1/{documents,corpora,rag}.py`, `scripts/ingest.py` (`make ingest ARGS="--corpus NAME"`). Embeddings are a provider method (`Provider.embed`); Anthropic does not support it.
 Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour); `tests/chat_helpers.py` gives chat tests a database, two users and a scriptable fake provider.
 
 ## Configuration and database
@@ -83,4 +94,4 @@ Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour); `te
   `cd api && uv run alembic revision --autogenerate -m "message"`.
 - Tests run on SQLite. To also run the migration tests on PostgreSQL:
   `TEST_POSTGRES_URL=postgresql+psycopg://user:pass@localhost:5432/dbname uv run pytest tests/integration`
-  (the database's `users`, `conversations`, `messages` and `alembic_version` tables are dropped, so use a scratch database).
+  (all application tables, `alembic_version` and the enum types are dropped, so use a scratch database). The same variable enables the test that ranks vectors with pgvector's cosine operator; the database must offer the `vector` extension (the `make db-up` image does).

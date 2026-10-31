@@ -74,6 +74,9 @@ def add_exchange(
     latency_ms: int,
     cost_usd: float | None,
     started_at: datetime,
+    retrieved_chunk_ids: list[str] | None = None,
+    use_rag: bool = False,
+    corpus_ids: list[str] | None = None,
 ) -> Message:
     """Store a user message and the assistant reply together, so a failed call leaves no trace."""
     answered_at = max(datetime.now(UTC), started_at + timedelta(microseconds=1))
@@ -94,11 +97,14 @@ def add_exchange(
         tokens_used=tokens_used,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
+        retrieved_chunk_ids=retrieved_chunk_ids or [],
         created_at=answered_at,
     )
     db.add(reply)
     conversation.provider = provider
     conversation.model = model
+    conversation.use_rag = use_rag
+    conversation.corpus_ids = corpus_ids or []
     conversation.updated_at = answered_at
     db.add(conversation)
     db.commit()
