@@ -109,6 +109,12 @@ class TestPublicRoutes(AuthTestCase):
         self.assertEqual(self.client.get("/health").status_code, 200)
         self.assertEqual(self.login().status_code, 401)  # reached the handler, bad credentials
 
+    def test_root_redirects_to_the_docs(self):
+        response = self.client.get("/", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/docs")
+
     def test_get_ask_still_explains_post_usage_without_a_token(self):
         self.assertEqual(self.client.get("/ask").status_code, 405)
 
