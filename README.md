@@ -431,9 +431,11 @@ Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy`
 
 Builds on the web-app demo. You will upload a document, see exactly how it was split and embedded, index it a second way with a different embedding model and splitter, ask questions with and without documents, check that other users cannot see your files, and share a corpus. Every UI step has a "Same from the API" curl equivalent.
 
-The keyless setup uses the fake provider's embeddings, which are a hashed bag of words: they find passages that **share words** with your question, which is enough to see the whole mechanism. Real embedding models also match meaning. With real keys, use the `openai-*` models from `rag.yaml` instead.
+The keyless setup uses the fake provider's embeddings, which are a hashed bag of words: they find passages that **share words** with your question, which is enough to see the whole mechanism. Real embedding models also match meaning. To try them, follow **Prepare (with keys)** in step 1 instead of **Prepare (keyless)**; every other step is the same for both.
 
 **1. Prepare (keyless)**
+
+Skip to **Prepare (with keys)** below if you use real providers.
 
 Start from the first demo (database, `make migrate`, the private copy of the config in `/tmp/aw-config`, the first admin, `make run-api` and `make run-ui`). The pgvector tables come from the same `make migrate`; run it again if you set the system up before documents existed. Then give the private config two fake embedding models and a few splitting strategies, and restart `make run-api`:
 
@@ -470,6 +472,50 @@ curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
 ```
 
 `/rag/options` lists the embedding models, the splitting strategies and the defaults. Embedding models whose provider is not running show `"available": false` and cannot be used.
+
+Keep two embedding model names in variables, so the later steps work for both setups:
+
+```bash
+EMB_SMALL=fake-small
+EMB_LARGE=fake-large
+```
+
+**1. Prepare (with keys)**
+
+Start from the [demo with API keys](#demo-run-the-whole-system-with-api-keys) (steps 1 to 4: `.env`, database, `make migrate`, first admin, `make run-api`, `make run-ui`). Do not use the private config of the keyless demo; run `unset ANSWERWORKS_CONFIG_DIR` so the real `config/rag.yaml` applies. That file defines the embedding models and splitters:
+
+| Name | Provider | Model | Needs |
+| --- | --- | --- | --- |
+| `openai-small` (default) | `openai` | `text-embedding-3-small` | `OPENAI_API_KEY` |
+| `openai-large` | `openai` | `text-embedding-3-large` | `OPENAI_API_KEY` |
+| `local-nomic` | `local` | `nomic-embed-text` | `local` enabled in `config/providers.yaml` and an embedding-capable server (for example Ollama with `ollama pull nomic-embed-text`) |
+
+Anthropic has no embeddings API, so an Anthropic key alone cannot index documents; it can still answer the chat questions of step 6 (pick a Claude model in the sidebar) after another provider has done the embedding. Embedding calls are billed by the provider, but the demo file is tiny.
+
+Then sign in as in the keyless setup (the `login` helper and `TOKEN` below), look at what can be chosen, and set the two model names:
+
+```bash
+# login EMAIL PASSWORD prints an access token. Defining it prints nothing, and it is
+# forgotten when you close the terminal, so paste this block again in a new one.
+login() {
+  curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
+}
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
+TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
+curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
+EMB_SMALL=openai-small
+EMB_LARGE=openai-large
+```
+
+Check that the models you use show `"available": true`. A model whose key is missing is `false` and the API log names the variable to set. With `local-nomic`, set `EMB_LARGE=local-nomic` instead.
+
+Differences from the keyless demo to expect in the steps below:
+
+- The splitters are the ones in `config/rag.yaml` (`recursive` 800, `sentence` 500, `fixed` 1000 characters). The demo file is about 270 characters, so each index holds a single chunk and the chunk counts are equal; the index table still shows the different models and splitters. Use a longer file to see the counts differ.
+- Real embeddings match meaning, not just shared words, so a question such as "what do penguins eat" ranks the penguin passage first even if the wording differs, and scores are cosine similarities you can compare between indexes of the same model only.
+- In **Chat**, pick the answering model in the sidebar. Its answer is a real reply, not an echo of the prompt.
 
 **2. Upload a document**
 
@@ -508,13 +554,13 @@ Each chunk carries `embedding_name`, `embedding_model`, `embedding_dimensions`, 
 
 **4. Index the same document a second way**
 
-Still in the document's box, under **Add another index** choose `fake-large` and `sentence`, then **Index with these settings**. The table now shows two rows with different chunk counts.
+Still in the document's box, under **Add another index** choose `fake-large` (`openai-large` with keys) and `sentence`, then **Index with these settings**. The table now shows two rows with different chunk counts.
 
 Same from the API:
 
 ```bash
 curl -s localhost:8000/documents/$DOC/index -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"embedding": "fake-large", "chunking": "sentence"}'
+  -H 'Content-Type: application/json' -d "{\"embedding\": \"$EMB_LARGE\", \"chunking\": \"sentence\"}"
 ```
 
 **5. Compare what each index retrieves**
@@ -527,7 +573,7 @@ search() {
     | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d["embedding_name"],d["chunking_name"]);[print(" ",h["score"],h["text"][:70]) for h in d["hits"]]'
 }
 search '{"query": "what do penguins eat"}'
-search '{"query": "what do penguins eat", "embedding": "fake-large", "chunking": "sentence"}'
+search "{\"query\": \"what do penguins eat\", \"embedding\": \"$EMB_LARGE\", \"chunking\": \"sentence\"}"
 search '{"query": "what do penguins eat", "chunking": "fixed"}'      # nothing: no chunks made this way yet
 ```
 
@@ -541,7 +587,7 @@ Same from the API:
 
 ```bash
 curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"message": "What do penguins eat?", "use_rag": true, "embedding": "fake-small", "chunking": "recursive"}'
+  -d "{\"message\": \"What do penguins eat?\", \"use_rag\": true, \"embedding\": \"$EMB_SMALL\", \"chunking\": \"recursive\"}"
 ```
 
 The response has `citations`. Open the conversation again (Conversations, then Open, or `GET /conversations/<id>`): the sources are kept with the answer.
@@ -599,7 +645,7 @@ corpora:
     source: { type: filesystem, path: /tmp/aw-handbook }
 EOF
 make ingest ARGS="--corpus folder-demo"                                         # default embedding and splitter
-make ingest ARGS="--corpus folder-demo --embedding fake-large --chunking fixed" # a second index
+make ingest ARGS="--corpus folder-demo --embedding $EMB_LARGE --chunking fixed" # a second index
 ```
 
 The corpus appears in **Admin · Corpora** with its documents and both indexes. Run the command again after editing the files to refresh them. A file that cannot be read is kept as `failed` with the reason.
