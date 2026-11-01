@@ -158,8 +158,10 @@ Open http://localhost:8000/docs, call `POST /auth/login` with the admin credenti
 The same from a terminal:
 
 ```bash
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"admin passphrase 1"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"email":"ana@example.com","temporary_password":"temporary pass 123"}'
 ```
@@ -242,8 +244,10 @@ In the browser, open http://localhost:8000/docs:
 In a terminal:
 
 ```bash
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"admin passphrase 1"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s localhost:8000/models -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -276,11 +280,15 @@ Follow steps 1 to 4 of the keyless demo (or 1 to 3 of the demo with keys) above 
 **2. Sign in and send a first message**
 
 ```bash
+# login EMAIL PASSWORD prints an access token. Defining it prints nothing, and it is
+# forgotten when you close the terminal, so paste this block again in a new one.
 login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-TOKEN=$(login admin@example.com 'admin passphrase 1')
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
+TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"message": "My favourite colour is green. Please remember it."}'
 ```
@@ -328,7 +336,9 @@ Delete is shown at the end of the next step.
 Create a second user and sign in as them (steps 6 and 7 of the keyless demo, including the forced password change), then:
 
 ```bash
-ANA=$(login ana@example.com '<ana new password>')
+ANA_EMAIL=ana@example.com
+ANA_PASSWORD='<ana new password>'
+ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
 curl -s localhost:8000/conversations -H "Authorization: Bearer $ANA"                 # []
 curl -s localhost:8000/conversations/$CID -H "Authorization: Bearer $ANA"            # 404, as if it did not exist
 curl -s localhost:8000/chat -H "Authorization: Bearer $ANA" -H 'Content-Type: application/json' \
@@ -353,11 +363,15 @@ Sign in as the admin. The sidebar lists the pages: **Chat**, **Conversations**, 
 Same from the API: `GET /auth/me` returns your `role`, which is how the UI decides what to list:
 
 ```bash
+# login EMAIL PASSWORD prints an access token. Defining it prints nothing, and it is
+# forgotten when you close the terminal, so paste this block again in a new one.
 login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-TOKEN=$(login admin@example.com 'admin passphrase 1')
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
+TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/auth/me -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -403,7 +417,9 @@ Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of
 Sign out and sign in as the user you created. The app first asks for a new password. Then there is no Admin page, **Conversations** is empty (conversations are private), and the admin API refuses the same token:
 
 ```bash
-ANA=$(login ana@example.com '<ana new password>')
+ANA_EMAIL=ana@example.com
+ANA_PASSWORD='<ana new password>'
+ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $ANA"     # 403
 ```
 
@@ -441,11 +457,15 @@ EOF
 Then, in a terminal, sign in and look at what can be chosen:
 
 ```bash
+# login EMAIL PASSWORD prints an access token. Defining it prints nothing, and it is
+# forgotten when you close the terminal, so paste this block again in a new one.
 login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-TOKEN=$(login admin@example.com 'admin passphrase 1')
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD='admin passphrase 1'
+TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -531,7 +551,9 @@ The response has `citations`. Open the conversation again (Conversations, then O
 Sign in as another user (see [Adding users](#adding-users-admin)) and open **Documents**: your upload is not there, and a search finds none of it:
 
 ```bash
-ANA=$(login ana@example.com '<ana new password>')
+ANA_EMAIL=ana@example.com
+ANA_PASSWORD='<ana new password>'
+ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
 curl -s localhost:8000/documents -H "Authorization: Bearer $ANA"            # []
 curl -s localhost:8000/documents/$DOC -H "Authorization: Bearer $ANA"       # 404
 search_as_ana() {
