@@ -217,10 +217,9 @@ To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: tru
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
 BOOTSTRAP_ADMIN_PASSWORD='admin passphrase 1' \
 make create-admin
-
-make run-api              # terminal 1
-make run-ui               # terminal 2
 ```
+
+Passwords must be 12 to 128 characters. The bootstrap admin does not have to change their password. Running `make create-admin` again fails and changes nothing, because an admin already exists.
 
 **3. Start API and UI services**
 
