@@ -126,24 +126,28 @@ sed -i '/^  fake:/,/enabled:/ s/enabled: false/enabled: true/' /tmp/aw-config/pr
 export ANSWERWORKS_CONFIG_DIR=/tmp/aw-config
 ```
 
-**3. Create the first admin and start both services**
+**3. Create the first admin**
 
 ```bash
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
 BOOTSTRAP_ADMIN_PASSWORD='admin passphrase 1' \
 make create-admin         # or run `make create-admin` alone to be prompted
-
-make run-api              # terminal 1 (keep ANSWERWORKS_CONFIG_DIR exported)
-make run-ui               # terminal 2
 ```
 
 Passwords must be 12 to 128 characters. The bootstrap admin does not have to change their password. Running `make create-admin` again fails and changes nothing, because an admin already exists.
 
-**4. Sign in and chat as the admin**
+**4. Start API and UI services**
+
+```bash
+make run-api              # terminal 1 (keep ANSWERWORKS_CONFIG_DIR exported)
+make run-ui               # terminal 2
+```
+
+**5. Sign in and chat as the admin**
 
 Open http://localhost:8501, sign in as `admin@example.com`, leave the model on "Echo (fake)", and ask something. The answer is `Echo: <your question>` with token usage, and cost shows "n/a" because the fake model has no price.
 
-**5. Create a regular user (admin API)**
+**6. Create a regular user (admin API)**
 
 Open http://localhost:8000/docs, call `POST /auth/login` with the admin credentials, copy the `access_token`, click **Authorize** and paste it. Then call `POST /admin/users` with:
 
@@ -160,18 +164,18 @@ curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content
   -d '{"email":"ana@example.com","temporary_password":"temporary pass 123"}'
 ```
 
-**6. See the forced password change**
+**7. See the forced password change**
 
 In the UI, sign out and sign in as `ana@example.com` with the temporary password. The app asks for a new password before showing the chat. Until it is changed, the API answers 403 to `/models` and `/ask` for that account. After changing it, the chat opens.
 
-**7. Try the rules**
+**8. Try the rules**
 
 - Call `GET /admin/users` with ana's token: 403 (admins only). Without a token: 401.
 - As the admin, `PATCH /admin/users/{id}` with `{"is_active": false}` deactivates ana. Signing in or refreshing then fails with 403, and her existing token stops working.
 - `POST /admin/users/{id}/reset-password` sets a new temporary password and forces another change.
 - You cannot deactivate or demote your own account. `POST /auth/register` does not exist (404).
 
-**8. Clean up**
+**9. Clean up**
 
 ```bash
 make db-down              # keeps the data; `make db-destroy` deletes it
@@ -207,7 +211,7 @@ unset ANSWERWORKS_CONFIG_DIR     # in case the fake-provider config from the oth
 
 To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: true` for `local` in `config/providers.yaml`, adjust its `base_url` and model ids, and make sure the server is running. To change which models are offered or their prices, edit the lists in the same file.
 
-**2. Create the first admin and start both services**
+**2. Create the first admin**
 
 ```bash
 BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
@@ -218,7 +222,14 @@ make run-api              # terminal 1
 make run-ui               # terminal 2
 ```
 
-**3. Check which providers loaded**
+**3. Start API and UI services**
+
+```bash
+make run-api              # terminal 1
+make run-ui               # terminal 2
+```
+
+**4. Check which providers loaded**
 
 `/models` needs a token, so sign in first to get an `access_token`. Either use the interactive docs or a terminal.
 
@@ -239,7 +250,7 @@ curl -s localhost:8000/models -H "Authorization: Bearer $TOKEN"
 
 The access token is valid for 15 minutes (`auth.access_token_ttl_minutes` in `config/app.yaml`); after that, log in again for a new one. Only models of providers that loaded are listed. If one is missing, look in the `make run-api` output for a warning naming the environment variable that is not set.
 
-**4. Chat**
+**5. Chat**
 
 Open http://localhost:8501 and sign in. Pick a model in the sidebar, ask a question, and compare:
 
@@ -247,11 +258,11 @@ Open http://localhost:8501 and sign in. Pick a model in the sidebar, ask a quest
 - streaming: toggle **Stream responses** to see the answer arrive in pieces;
 - tokens and estimated cost under each answer. Cost shows "n/a" for models with no `pricing` entry in `config/providers.yaml`.
 
-**5. Accounts and rules**
+**6. Accounts and rules**
 
-Create a second user, see the forced password change and try the admin rules exactly as in steps 5 to 7 of the demo above. A user's token works with every configured provider.
+Create a second user, see the forced password change and try the admin rules exactly as in steps 6 to 8 of the keyless demo. A user's token works with every configured provider.
 
-**6. Clean up**
+**7. Clean up**
 
 Stop both services, then `make db-down` (or `make db-destroy` to delete the data) and `make clean` to remove Python and tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.coverage`). Remove your keys from `.env` if this is a shared machine.
 
@@ -261,7 +272,7 @@ Builds on the demos above: the same running system, now with conversations that 
 
 **1. Start from a running system**
 
-Follow steps 1 to 3 of either demo above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
+Follow steps 1 to 4 of the keyless demo (or 1 to 3 of the demo with keys) above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
 
 **2. Sign in and send a first message**
 
@@ -315,7 +326,7 @@ Delete is shown at the end of the next step.
 
 **7. See that conversations are private**
 
-Create a second user and sign in as them (steps 5 and 6 of the demo above, including the forced password change), then:
+Create a second user and sign in as them (steps 6 and 7 of the keyless demo, including the forced password change), then:
 
 ```bash
 ANA=$(login ana@example.com '<ana new password>')
@@ -334,7 +345,7 @@ Same as the demos above. Deleting a conversation also deletes its messages; stop
 
 ## Demo: the web app (chat, conversations, admin)
 
-The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 3 of either demo above (database, `make migrate`, first admin, `make run-api`), then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
+The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 4 of the keyless demo (or 1 to 3 of the demo with keys) above: database, `make migrate`, first admin, `make run-api`, then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
 
 **1. Sign in and find your way around**
 
@@ -386,7 +397,7 @@ curl -s localhost:8000/ask -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 
 Open **Admin · Users**. The table lists every account with its role, whether it is active, and whether a password change is pending. Under **Add a user**, enter an email, a temporary password (12 to 128 characters) and a role, then **Create user**. Under **Manage a user**, pick someone to change their role, deactivate them, or set a new temporary password. Try deactivating yourself: the API refuses, and the page shows its message.
 
-Same from the API: see [Adding users (admin)](#adding-users-admin) and step 7 of the first demo.
+Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of the keyless demo.
 
 **6. See it as a regular user**
 
