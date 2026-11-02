@@ -1,0 +1,14 @@
+# Two fake embedding models and two splitters, enough to index one document two ways.
+embedding_models:
+  fake-small: { provider: fake, model: fake-small, dimensions: 256 }
+  fake-large: { provider: fake, model: fake-large, dimensions: 512 }
+default_embedding: fake-small
+
+chunking_strategies:
+  recursive: { method: recursive, size: 200, overlap: 30 }
+  sentence: { method: sentence, size: 120, overlap: 30 }
+default_chunking: recursive
+
+retrieval: { top_k: 3, min_score: 0.0 }
+vector_store: { type: pgvector }
+supported_formats: [pdf, txt, md]

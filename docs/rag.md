@@ -16,7 +16,7 @@ file -> parse -> split into chunks -> embed each chunk -> store -> (later) embed
 
 ## Several embedding models and splitting strategies
 
-Both are named entries in [config/rag.yaml](../config/rag.yaml), and you can define as many as you like.
+Both are named entries in `config/rag.yaml`, and you can define as many as you like.
 
 ```yaml
 embedding_models:

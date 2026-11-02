@@ -1,0 +1,25 @@
+site_name: AnswerWorks
+site_description: One interface for several AI models, with answers grounded in your documents.
+docs_dir: docs
+site_dir: site
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Deployment: deployment.md
+  - API:
+      - Overview: api/overview.md
+      - Authentication: api/authentication.md
+      - Authorization: api/authorization.md
+      - Conversations and chat: api/conversations.md
+      - Documents, corpora and retrieval: api/documents.md
+  - RAG: rag.md
+  - UI:
+      - Overview: ui/overview.md
+      - Components: ui/components.md
+  - Data model: data-model.md
+  - Admin guide: admin-guide.md
+  - Testing: testing.md
+  - Contributing: contributing.md

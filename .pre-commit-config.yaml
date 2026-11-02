@@ -1,0 +1,29 @@
+# Install once with `pre-commit install`. Each package is checked with its own environment
+# (`make install` first), so the hooks run the same tools as `make lint`.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-api
+        name: ruff (api)
+        entry: bash -c 'cd api && uv run ruff check . && uv run ruff format --check .'
+        language: system
+        files: ^api/
+        pass_filenames: false
+      - id: ruff-ui
+        name: ruff (ui)
+        entry: bash -c 'cd ui && uv run ruff check . && uv run ruff format --check .'
+        language: system
+        files: ^ui/
+        pass_filenames: false
+      - id: mypy-api
+        name: mypy (api)
+        entry: bash -c 'cd api && uv run mypy app scripts'
+        language: system
+        files: ^api/
+        pass_filenames: false
+      - id: mypy-ui
+        name: mypy (ui)
+        entry: bash -c 'cd ui && uv run mypy app'
+        language: system
+        files: ^ui/
+        pass_filenames: false

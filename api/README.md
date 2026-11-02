@@ -83,7 +83,7 @@ config, then `ANSWERWORKS_CONFIG_DIR=/path/to/copy make run-api`.
 `app/services/llm/` (provider interface, adapters, registry, chat service, retry, cost) · `app/core/config.py` (YAML/.env).
 Chat: `app/services/chat_service.py` (prompt from history, provider call, persistence), `app/services/conversation_service.py`, `app/db/repositories/conversation_repo.py`, `app/api/v1/{chat,conversations}.py`.
 RAG: `app/services/rag/` (`chunking`, `parsers`, `sources/`, `embeddings`, `index` (embedding model + strategy and the metadata stored on every chunk), `vector_store/` (pgvector), `retriever` (the visibility rule), `ingestion`, and the document/corpus/retrieval services), `app/api/v1/{documents,corpora,rag}.py`, `scripts/ingest.py` (`make ingest ARGS="--corpus NAME"`). Embeddings are a provider method (`Provider.embed`); Anthropic does not support it.
-Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour); `tests/chat_helpers.py` gives chat tests a database, two users and a scriptable fake provider.
+Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour, and the OpenAPI snapshot in `docs/openapi.json`: after an intended API change run `make openapi`); `tests/chat_helpers.py` gives chat tests a database, two users and a scriptable fake provider.
 
 ## Configuration and database
 
@@ -95,3 +95,7 @@ Tests: `tests/unit`, `tests/integration`, `tests/contract` (HTTP behaviour); `te
 - Tests run on SQLite. To also run the migration tests on PostgreSQL:
   `TEST_POSTGRES_URL=postgresql+psycopg://user:pass@localhost:5432/dbname uv run pytest tests/integration`
   (all application tables, `alembic_version` and the enum types are dropped, so use a scratch database). The same variable enables the test that ranks vectors with pgvector's cosine operator; the database must offer the `vector` extension (the `make db-up` image does).
+
+## Container image
+
+`api/Dockerfile` (built from the repository root, see `docker-compose.yml`) installs the locked dependencies with uv, copies `config/` next to the package and, at start, runs `alembic upgrade head` before serving on port 8000. `docker compose run --rm api python -m scripts.create_admin` creates the first admin.

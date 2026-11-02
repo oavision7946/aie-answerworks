@@ -1,0 +1,14 @@
+.git
+.internal
+.env
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/*.egg-info
+tests_e2e
+docs
+prompts

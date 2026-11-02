@@ -16,11 +16,13 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - **Web UI:** a Streamlit app with sign-in, a forced password-change screen and these pages: **Chat** (saved conversations with a model picker, streaming, per-answer usage and optional document sources), **Conversations** (open, rename, delete), **Documents** (your uploads and the shared corpora you can read, with how each was indexed), **Ask** (one-off question-answer, nothing saved) and, for admins only, **Admin · Users** and **Admin · Corpora**.
 - **RAG (answers from your documents):** upload PDF, TXT or Markdown files (private to you) or have an admin build shared corpora, then turn on documents in Chat or pass `use_rag` to `/chat`. Answers cite the passages they used. **Embedding models and text-splitting strategies are configurable and interchangeable** (several can be defined in [config/rag.yaml](config/rag.yaml)), and every stored chunk records which embedding model and which splitter produced it, so a document can be indexed several ways and compared. Retrieval is strictly scoped: your private documents never reach another user, and shared corpora are visible only to users with a grant (or to everyone if public), with revocation applying immediately. See [docs/rag.md](docs/rag.md).
 - **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
+- **Docker Compose:** `docker compose up --build` starts PostgreSQL with pgvector, the API (migrations applied at start) and the web app. See [Run with Docker Compose](#run-with-docker-compose).
+- **Documentation site, contract and end-to-end tests:** a MkDocs site built from [docs/](docs/index.md), a committed OpenAPI snapshot that a contract test checks, and an end-to-end test of sign-in, upload, chat with sources and saved history.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
 ### Not built yet
 
-Docker Compose packaging, the documentation site and end-to-end tests (see the [roadmap](#roadmap)). Deliberately simple for now: uploads are indexed while the request waits, similarity search is exact (no approximate vector index), and only PDF, TXT and Markdown are parsed. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
+Deliberately simple for now: uploads are indexed while the request waits, similarity search is exact (no approximate vector index), and only PDF, TXT and Markdown are parsed. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
 
 ## Prerequisites
 
@@ -55,6 +57,18 @@ make run-ui               # http://localhost:8501  (in a second terminal)
 Open http://localhost:8501 and sign in with the admin account you just created. The UI finds the API at `http://127.0.0.1:8000`; set `API_BASE_URL` to point it elsewhere.
 
 If something is already listening on port 5432, use another port: `make db-up DB_PORT=55432`, then put the `DATABASE_URL` it prints into `.env`. `make db-down` stops the database (data is kept); `make db-destroy` deletes the data.
+
+### Run with Docker Compose
+
+The same system without installing Python or `uv` on the host:
+
+```bash
+cp .env.example .env                 # set JWT_SECRET and the provider keys you use
+docker compose up --build -d
+docker compose run --rm api python -m scripts.create_admin
+```
+
+Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). `docker compose down` stops everything and keeps the data (`down -v` deletes it).
 
 ### Clean up
 
@@ -698,7 +712,11 @@ To add a model, add an entry under its provider in `providers.yaml`. To try anot
 make test        # API + UI test suites (85% coverage gate; both currently at 100%)
 make lint        # ruff
 make format      # ruff --fix and format
+make test-e2e    # end-to-end flow against running services (see docs/testing.md)
+make openapi     # rewrite docs/openapi.json after an intended API change
 ```
+
+Install the hooks with `pre-commit install` to run ruff and mypy before each commit. Build the documentation site with `cd api && uv run --with mkdocs-material mkdocs build -f ../mkdocs.yml` (output in `site/`); more in [docs/contributing.md](docs/contributing.md).
 
 Tests never reach a real provider; adapters are tested against mocked HTTP. Automatic CI runs are deliberately disabled for now; the workflows in `.github/workflows/` can be started manually from the Actions tab.
 
@@ -709,7 +727,9 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | `api/` | FastAPI backend and its tests; see [api/README.md](api/README.md) |
 | `ui/` | Streamlit frontend and its tests; see [ui/README.md](ui/README.md) |
 | `config/` | Non-secret YAML configuration |
-| `docs/` | Documentation: authentication, authorization, conversations, documents and RAG, data model, UI, admin guide |
+| `docs/` | Documentation site sources (`mkdocs.yml`): architecture, configuration, deployment, API, RAG, UI, data model, admin guide, testing, contributing; plus `openapi.json` |
+| `docker-compose.yml`, `api/Dockerfile`, `ui/Dockerfile` | Run the database, API and web app in containers |
+| `tests_e2e/` | End-to-end test and its keyless config |
 | `Makefile` | Install, run, test, lint, migrate, create-admin, ingest and local-database commands |
 
 `api/` and `ui/` are separate uv projects with their own environments, which is why `make install` syncs both.
@@ -725,7 +745,7 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | 5 | Conversations and chat: persistence and streaming (API) | Done |
 | 6 | UI: chat, conversations, question-answer and admin users pages | Done |
 | 7 | RAG: documents, shared corpora, configurable embedding models and splitters, retrieval with citations | Done |
-| 8 | Docker Compose, docs site, end-to-end tests | Next |
+| 8 | Docker Compose, docs site, contract and end-to-end tests | Done |
 
 ## License
 

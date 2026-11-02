@@ -1,4 +1,4 @@
-.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate ingest clean
+.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate ingest openapi test-e2e clean
 
 API_DIR := api
 UI_DIR  := ui
@@ -36,7 +36,7 @@ test-ui:
 	cd $(UI_DIR) && uv run pytest
 
 lint:
-	cd $(API_DIR) && uv run ruff check . && uv run ruff format --check .
+	cd $(API_DIR) && uv run ruff check . ../tests_e2e && uv run ruff format --check . ../tests_e2e
 	cd $(UI_DIR) && uv run ruff check . && uv run ruff format --check .
 
 format:
@@ -53,6 +53,14 @@ create-admin:
 # Ingest shared corpora, for example: make ingest ARGS="--corpus company-handbook"
 ingest:
 	cd $(API_DIR) && uv run python -m scripts.ingest $(ARGS)
+
+# Rewrite docs/openapi.json after an intended API change (a contract test compares against it).
+openapi:
+	cd $(API_DIR) && uv run python -m scripts.export_openapi
+
+# End-to-end flow against running services; see docs/testing.md for starting them.
+test-e2e:
+	cd $(API_DIR) && uv run pytest ../tests_e2e -o addopts=""
 
 clean:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

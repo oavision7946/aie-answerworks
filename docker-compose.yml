@@ -1,0 +1,60 @@
+# The whole system: PostgreSQL (pgvector), the API and the web app.
+#
+#   cp .env.example .env        # set JWT_SECRET and the provider keys you use
+#   docker compose up --build
+#   docker compose run --rm api python -m scripts.create_admin     # first admin
+#
+# Web app http://localhost:8501, API docs http://localhost:8000/docs.
+# CONFIG_DIR picks another config directory; the ports can be moved with the *_PORT variables.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-answerworks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-answerworks}
+      POSTGRES_DB: ${POSTGRES_DB:-answerworks}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}
+      ANSWERWORKS_CONFIG_DIR: /srv/answerworks/config
+      # Ollama or another model server on the host: use http://host.docker.internal:<port>
+      # as base_url in providers.yaml (localhost would be the container itself).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${CONFIG_DIR:-./config}:/srv/answerworks/config:ro
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "${UI_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:

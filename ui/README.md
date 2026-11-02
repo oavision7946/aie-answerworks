@@ -37,3 +37,7 @@ The Admin page is only listed for admins, but the API enforces the role on every
 `tests/unit` covers the API client and navigation rules. `tests/app` drives the real pages with
 Streamlit's `AppTest` against a mocked API (`respx`): `helpers.py` builds the app or a single view,
 with or without a signed-in session. Nothing reaches a real API or provider.
+
+## Container image
+
+`ui/Dockerfile` (built from the repository root, see `docker-compose.yml`) installs the locked dependencies and starts Streamlit on port 8501. Point it at the API with `API_BASE_URL`; Compose sets it to `http://api:8000`.
