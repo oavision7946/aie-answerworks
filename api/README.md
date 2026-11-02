@@ -5,7 +5,9 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
 
 ## Endpoints
 
-- `GET /health` – 200 `{status: ok, database: ok}`, or 503 `degraded` when PostgreSQL is unreachable.
+- `GET /health` – liveness: 200 `{status: ok}` while the process runs; never touches the database.
+- `GET /health/ready` – readiness: 200 when the database is reachable and migrated (and has pgvector), `JWT_SECRET` is set and a provider loaded; otherwise 503 with the failing checks (no internal detail).
+- `GET /admin/status` (admin) – database and schema version, providers and their call results, embedding models, corpora and their last ingestion, row counts, request totals. `GET /metrics` – the same in the Prometheus format, only when `METRICS_TOKEN` is set. See `docs/observability.md`.
 - `POST /auth/login` – `{email, password}` → `access_token`, `refresh_token`, `expires_in`, and
   `must_change_password`. Wrong password and unknown email give the same 401; a deactivated account gets 403.
 - `POST /auth/refresh` – `{refresh_token}` → a new token pair (403 for deactivated users).
@@ -42,8 +44,8 @@ root with `make run-api`; tests with `make test-api`. OpenAPI docs are served at
 
 ## Authentication
 
-Send `Authorization: Bearer <access_token>`. Everything except `/health`, `/auth/login` and
-`/auth/refresh` needs it; `/models`, `/ask` and the admin routes additionally need the password
+Send `Authorization: Bearer <access_token>`. Everything except `/health`, `/health/ready`, `/auth/login`
+and `/auth/refresh` needs it; `/models`, `/ask` and the admin routes additionally need the password
 change to be done, and `/admin/*` needs the `admin` role. Accounts are created by admins (no
 registration). Status codes: 401 missing/invalid/expired token, 403 wrong role, deactivated account or
 pending password change, 503 when `JWT_SECRET` is empty or under 16 characters.

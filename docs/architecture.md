@@ -13,11 +13,12 @@ The repository holds two independent Python packages, `api/` and `ui/`, each wit
 
 | Package | Role |
 |---|---|
-| `api/` | Routers: `health`, `auth`, `ask`, `chat`, `conversations`, `models`, `documents`, `corpora`, `rag`, `admin_users` |
+| `api/` | Routers: `health`, `metrics`, `auth`, `ask`, `chat`, `conversations`, `models`, `documents`, `corpora`, `rag`, `admin_users`, `admin_status` |
 | `core/` | Settings (YAML plus environment), security (Argon2, JWT), permission dependencies |
 | `schemas/` | Pydantic request and response models |
 | `services/llm/` | The `Provider` interface, the registry, the retry and streaming service, and one adapter per provider type |
 | `services/rag/` | Parsers, splitters, embeddings, ingestion, retriever, sources and the vector store |
+| `core/telemetry.py` | In-memory request and provider-call counters behind the status page and `/metrics` |
 | `db/` | SQLAlchemy models, repositories and the session dependency; Alembic migrations live in `api/migrations` |
 
 Routes call services, services call repositories and providers. No route imports a provider SDK.

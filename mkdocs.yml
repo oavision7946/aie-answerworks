@@ -9,6 +9,7 @@ nav:
   - Architecture: architecture.md
   - Configuration: configuration.md
   - Deployment: deployment.md
+  - Observability: observability.md
   - API:
       - Overview: api/overview.md
       - Authentication: api/authentication.md

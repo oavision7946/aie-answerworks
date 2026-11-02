@@ -5,6 +5,7 @@ import streamlit as st
 from app.clients import api_client
 from app.clients.api_client import CorpusInfo, RagOptions
 from app.components import rag
+from app.components.format import ago
 from app.state import auth
 
 auth.require_sign_in()
@@ -106,8 +107,19 @@ def render_corpus(corpus: CorpusInfo, options: RagOptions) -> None:
             else:
                 done(f"Added {uploaded.name} to {corpus.name}.")
         if corpus.has_source:
-            st.caption("This corpus has a configured source folder.")
-            if st.button("Ingest source folder", key=f"ingest-{cid}"):
+            kind = "web addresses" if corpus.source_type == "url" else "folder"
+            refresh = (
+                f" Refreshed automatically every {corpus.refresh_minutes} minutes."
+                if corpus.refresh_minutes
+                else ""
+            )
+            st.caption(
+                f"This corpus has a configured source ({kind}).{refresh} "
+                f"Last ingested: {ago(corpus.last_ingested_at)}."
+            )
+            if corpus.last_ingest_error:
+                st.warning(corpus.last_ingest_error)
+            if st.button("Ingest source now", key=f"ingest-{cid}"):
                 try:
                     with st.spinner("Ingesting..."):
                         result = auth.call_authenticated(

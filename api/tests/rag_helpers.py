@@ -1,5 +1,8 @@
 """Fixtures for RAG tests: two fake embedding models, small chunking strategies, upload helpers."""
 
+import io
+import zipfile
+
 from app.core.settings import ChunkingConfig, EmbeddingModelConfig
 from app.db.models import Role
 from tests.chat_helpers import ChatTestCase
@@ -33,6 +36,19 @@ def pdf_bytes(text: str) -> bytes:
         xref,
     )
     return bytes(out)
+
+
+def docx_bytes(*paragraphs: str, document_xml: bytes | None = None) -> bytes:
+    """A minimal .docx whose body is the given paragraphs (or a hand-written document.xml)."""
+    ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    body = "".join(f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>" for text in paragraphs)
+    xml = (
+        document_xml or f'<w:document xmlns:w="{ns}"><w:body>{body}</w:body></w:document>'.encode()
+    )
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    return out.getvalue()
 
 
 class RagTestCase(ChatTestCase):

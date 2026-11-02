@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.core.telemetry import telemetry
 from app.schemas.ask import AskRequest, AskResponse, ModelOutput
 from app.services.llm.base import ChatMessage, Completion, StreamEnd, TextDelta, Usage
 from app.services.llm.costs import compute_cost_usd
@@ -28,19 +29,25 @@ logger = logging.getLogger(__name__)
 
 def _complete(resolved: ResolvedModel, messages: list[ChatMessage]) -> Completion:
     provider = resolved.provider
+    started = time.perf_counter()
     try:
-        return call_with_retry(
+        completion = call_with_retry(
             lambda: provider.complete(resolved.model.id, messages),
             resolved.request,
             logger,
             f"{provider.name} completion",
         )
+        telemetry.provider_call(provider.name, "complete", True, time.perf_counter() - started)
+        return completion
     except TransientProviderError as exc:
+        telemetry.provider_call(provider.name, "complete", False, time.perf_counter() - started)
         raise LLMServiceError(503, UNAVAILABLE) from exc
     except IncompleteResponseError as exc:
+        telemetry.provider_call(provider.name, "complete", False, time.perf_counter() - started)
         logger.error("%s returned an incomplete response: %s", provider.name, exc)
         raise LLMServiceError(502, INCOMPLETE) from exc
     except Exception as exc:  # ProviderError or anything unexpected: never leak details
+        telemetry.provider_call(provider.name, "complete", False, time.perf_counter() - started)
         raise LLMServiceError(502, FAILED) from exc
 
 
@@ -156,9 +163,13 @@ def stream_events(
                 latency_ms=int((time.perf_counter() - started_at) * 1000),
                 cost_usd=compute_cost_usd(resolved.model.pricing, usage),
             )
+            telemetry.provider_call(provider.name, "stream", True, time.perf_counter() - started_at)
             yield "done", completion.model_dump()
             return
         except Exception as exc:
+            telemetry.provider_call(
+                provider.name, "stream", False, time.perf_counter() - started_at
+            )
             transient = isinstance(exc, TransientProviderError)
             if transient and not answer_parts and attempt + 1 < max_attempts:
                 time.sleep(

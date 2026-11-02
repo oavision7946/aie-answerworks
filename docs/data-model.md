@@ -44,8 +44,11 @@ PostgreSQL, managed with Alembic (`make migrate`). A test checks that the models
 | id | UUID, primary key |
 | name | Unique, up to 100 characters |
 | description | |
-| source_config | Where ingestion reads files from, e.g. `{"type": "filesystem", "path": "..."}`; may be empty |
+| source_config | Where ingestion reads files from, e.g. `{"type": "filesystem", "path": "..."}` or `{"type": "url", "urls": [...]}`; may be empty |
 | is_public | Readable by every user |
+| refresh_minutes | Scheduled re-ingestion interval, from `corpora.yaml`; null means manual only |
+| last_ingested_at | When ingestion last finished, manual or scheduled |
+| last_ingest_error | A short summary of what failed in that run; null when all went well |
 | created_by | Foreign key to `users`, set to null if that user is deleted |
 | created_at | |
 

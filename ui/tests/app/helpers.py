@@ -120,3 +120,65 @@ CORPUS = {
     "document_count": 1,
     "has_source": True,
 }
+
+STATUS = {
+    "status": "ok",
+    "version": "0.1.0",
+    "environment": "development",
+    "uptime_seconds": 3725.0,
+    "database": {
+        "status": "ok",
+        "latency_ms": 1.5,
+        "revision": "0004",
+        "head": "0004",
+        "migrated": True,
+        "pgvector": True,
+    },
+    "auth_configured": True,
+    "providers": [
+        {
+            "name": "openai",
+            "type": "openai",
+            "loaded": True,
+            "reason": None,
+            "default": True,
+            "models": 3,
+            "calls": [
+                {
+                    "operation": "complete",
+                    "ok": 4,
+                    "error": 1,
+                    "average_ms": 120.5,
+                    "last_error_at": "2026-11-02T10:00:00Z",
+                },
+                {"operation": "embed", "ok": 2, "error": 0, "average_ms": 80.0},
+            ],
+        },
+        {
+            "name": "anthropic",
+            "type": "anthropic",
+            "loaded": False,
+            "reason": "ANTHROPIC_API_KEY is not set",
+            "default": False,
+            "models": 2,
+            "calls": [],
+        },
+    ],
+    "embedding_models": [
+        {"name": "small", "provider": "openai", "model": "e", "dimensions": 8, "available": True}
+    ],
+    "corpora": [
+        {
+            "name": "web",
+            "source_type": "url",
+            "documents": 2,
+            "refresh_minutes": 60,
+            "last_ingested_at": "2026-11-02T09:00:00Z",
+            "last_ingest_error": "1 item(s) could not be ingested: x.",
+            "overdue": True,
+        },
+        {"name": "manual", "documents": 0, "overdue": False},
+    ],
+    "counts": {"users": 3, "active_users": 2, "documents": 5},
+    "requests": {"total": 40, "by_status": {"2xx": 38, "4xx": 2}, "average_ms": 12.3},
+}

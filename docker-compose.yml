@@ -44,6 +44,29 @@ services:
       db:
         condition: service_healthy
 
+  # Re-ingests corpora that have `refresh_minutes` in corpora.yaml. Off by default:
+  #   docker compose --profile scheduler up -d
+  # Filesystem sources must be mounted into the container; url sources need nothing extra.
+  scheduler:
+    profiles: ["scheduler"]
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    command: ["python", "-m", "scripts.scheduler"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}
+      ANSWERWORKS_CONFIG_DIR: /srv/answerworks/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${CONFIG_DIR:-./config}:/srv/answerworks/config:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
   ui:
     build:
       context: .

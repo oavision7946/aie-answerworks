@@ -45,10 +45,17 @@ class TestFullFlow(unittest.TestCase):
         cls.addClassCleanup(cls.client.close)
 
     def test_sign_in_upload_ask_and_history_persists(self):
+        # 0. The API is alive and ready, and says so in detail to an administrator.
+        self.assertEqual(self.client.get("/health").json(), {"status": "ok"})
+        self.assertEqual(self.client.get("/health/ready").json()["status"], "ok")
+
         # 1. Sign in as the admin.
         admin = bearer(login(self.client, ADMIN_EMAIL, ADMIN_PASSWORD))
         me = self.client.get("/auth/me", headers=admin).json()
         self.assertEqual(me["role"], "admin")
+        status = self.client.get("/admin/status", headers=admin).json()
+        self.assertEqual(status["status"], "ok")
+        self.assertTrue(status["database"]["pgvector"])
 
         # 2. A regular user, who must choose their own password first.
         email = f"e2e-{uuid.uuid4().hex[:8]}@example.com"
@@ -84,8 +91,8 @@ class TestFullFlow(unittest.TestCase):
             "/chat", headers=user, json={"message": question, "use_rag": True}
         ).json()
         self.assertTrue(answer["citations"])
-        self.assertEqual(answer["citations"][0]["filename"], "penguins.txt")
-        self.assertIn("krill", answer["citations"][0]["text"])
+        cited = {c["filename"]: c for c in answer["citations"]}  # shared corpora may add more
+        self.assertIn("krill", cited["penguins.txt"]["text"])
         conversation_id = answer["conversation_id"]
 
         # 5. The conversation, its sources and a follow-up are still there when read back.
@@ -111,7 +118,13 @@ class TestFullFlow(unittest.TestCase):
             self.client.get(f"/documents/{document['id']}", headers=other).status_code, 404
         )
 
-        # 7. Clean up what this run created.
+        # 7. What the run did shows up in the status counters.
+        after = self.client.get("/admin/status", headers=admin).json()
+        calls = {c["operation"]: c for p in after["providers"] for c in p["calls"]}
+        self.assertGreaterEqual(calls["embed"]["ok"], 1)
+        self.assertGreaterEqual(calls["complete"]["ok"], 2)
+
+        # 8. Clean up what this run created.
         self.client.delete(f"/conversations/{conversation_id}", headers=user)
         self.client.delete(f"/documents/{document['id']}", headers=user)
 

@@ -1,8 +1,10 @@
 """Create embeddings through a provider, in batches, with the provider layer's retry rules."""
 
 import logging
+import time
 
 from app.core.settings import RequestConfig
+from app.core.telemetry import telemetry
 from app.services.llm.base import Provider
 from app.services.llm.errors import (
     FAILED,
@@ -34,6 +36,7 @@ class Embedder:
 
     def _embed_batch(self, batch: list[str]) -> list[list[float]]:
         spec = self.spec
+        started = time.perf_counter()
         try:
             vectors = call_with_retry(
                 lambda: self.provider.embed(spec.embedding_model, batch, spec.embedding_dimensions),
@@ -42,9 +45,16 @@ class Embedder:
                 f"{self.provider.name} embeddings",
             )
         except TransientProviderError as exc:
+            telemetry.provider_call(
+                self.provider.name, "embed", False, time.perf_counter() - started
+            )
             raise RagError(503, UNAVAILABLE) from exc
         except Exception as exc:  # never leak provider details
+            telemetry.provider_call(
+                self.provider.name, "embed", False, time.perf_counter() - started
+            )
             raise RagError(502, FAILED) from exc
+        telemetry.provider_call(self.provider.name, "embed", True, time.perf_counter() - started)
         if any(len(vector) != spec.embedding_dimensions for vector in vectors):
             logger.error(
                 "%s returned vectors that are not %d-dimensional; check rag.yaml",

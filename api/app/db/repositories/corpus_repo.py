@@ -1,6 +1,7 @@
 """Corpus and access-grant queries. Who may *read* a corpus is decided in services/rag/retriever."""
 
 import uuid
+from typing import Any
 
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ def create(
     description: str,
     is_public: bool,
     created_by: uuid.UUID | None,
-    source_config: dict[str, str] | None = None,
+    source_config: dict[str, Any] | None = None,
 ) -> Corpus:
     corpus = Corpus(
         name=name,

@@ -18,7 +18,8 @@ The UI is a Streamlit app that talks to the API over HTTP only. It never touches
 | Documents | everyone | **My uploads**: upload a file with a chosen embedding model and splitting strategy, see how each document was indexed, view its chunks, add another index, delete. **Shared corpora**: browse the corpora you can read (read-only). The two are separate sections. |
 | Ask | everyone | Question-answer through `POST /ask`: one question, one answer, nothing stored. Useful for one-off questions and for comparing models. |
 | Admin · Users | admins | Table of accounts; create a user with a temporary password; change role, deactivate or reactivate; reset a password. |
-| Admin · Corpora | admins | Create corpora, set the public flag, grant and revoke users, upload documents or ingest the configured source folder, see each file's status and indexes, delete. |
+| Admin · Corpora | admins | Create corpora, set the public flag, grant and revoke users, upload documents or ingest the configured source now, see the source, refresh interval, last run and last problem, see each file's status and indexes, delete. |
+| Admin · System | admins | Is everything working: database and schema, model providers and their call results, embedding models, corpora and their last ingestion, row counts and request totals. **Refresh** reloads it. |
 
 ## Chat with documents
 

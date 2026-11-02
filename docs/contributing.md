@@ -18,6 +18,7 @@ Install the pre-commit hooks once with `pre-commit install`; they run ruff and m
 - Do not commit `.env`, keys or personal data. Use the fake provider for demos and tests.
 - A changed database model needs an Alembic migration (a test fails when they drift): `cd api && uv run alembic revision --autogenerate -m "..."`.
 - A changed API needs `make openapi` and a look at the diff of `docs/openapi.json`.
+- A new or renamed heading in the README needs the matching line in its table of contents.
 
 ## Build the documentation
 

@@ -5,6 +5,7 @@
 - [Architecture](architecture.md)
 - [Configuration](configuration.md)
 - [Deployment with Docker Compose](deployment.md)
+- [Observability: health, status, metrics](observability.md)
 - [API overview](api/overview.md)
 - [Authentication](api/authentication.md)
 - [Authorization](api/authorization.md)

@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from app.services.rag.sources.base import Source, SourceFile
+from app.services.rag.sources.base import Source, SourceFailure, SourceFile
 
 
 class FilesystemSource(Source):
@@ -11,7 +11,7 @@ class FilesystemSource(Source):
         self.root = root
         self.formats = {f".{name}" for name in formats}
 
-    def files(self) -> Iterator[SourceFile]:
+    def files(self) -> Iterator[SourceFile | SourceFailure]:
         if not self.root.is_dir():
             raise FileNotFoundError(f"source directory {self.root} does not exist")
         for path in sorted(self.root.rglob("*")):

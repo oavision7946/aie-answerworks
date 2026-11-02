@@ -16,7 +16,9 @@ Open http://localhost:8501 for the web app and http://localhost:8000/docs for th
 - **api:** applies the migrations at start (`alembic upgrade head`), then serves on port 8000. It reads secrets from `.env` and overrides `DATABASE_URL` to point at `db`. `config/` is mounted read-only, so edit the YAML and run `docker compose restart api` to apply a change.
 - **ui:** the Streamlit app, with `API_BASE_URL=http://api:8000`. It starts when the API reports healthy.
 
-Both images run as a non-root user and have a health check (`/health` and `/_stcore/health`).
+- **scheduler** (optional, profile `scheduler`): re-ingests corpora that set `refresh_minutes`. Start it with `docker compose --profile scheduler up -d`. A `filesystem` source must be mounted into the container; `url` sources need nothing more.
+
+The images run as a non-root user and have a health check (`/health` for the API, which does not depend on the database, and `/_stcore/health` for the web app). Point a load balancer or orchestrator's *readiness* probe at `/health/ready`. See [Observability](observability.md).
 
 ## Variables
 

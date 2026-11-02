@@ -56,7 +56,7 @@ class TestUpload(RagTestCase):
 
     def test_bad_uploads_are_rejected_with_a_reason(self):
         cases = [
-            (("a.docx", b"x"), {}, 422, "Unsupported file type"),
+            (("a.xlsx", b"x"), {}, 422, "Unsupported file type"),
             (("a.txt", b"  "), {}, 422, "no text"),
             (("a.txt", PENGUINS), {"embedding": "nope"}, 422, "Unknown embedding model"),
             (("a.txt", PENGUINS), {"chunking": "nope"}, 422, "Unknown chunking strategy"),
@@ -252,7 +252,7 @@ class TestOptionsAndSearch(RagTestCase):
             {"small": "recursive", "para": "paragraph"},
         )
         self.assertEqual((body["default_embedding"], body["default_chunking"]), ("fake-a", "small"))
-        self.assertEqual(body["supported_formats"], ["pdf", "txt", "md"])
+        self.assertEqual(body["supported_formats"], ["pdf", "txt", "md", "docx", "html", "htm"])
 
     def test_search_returns_scored_passages_and_honours_top_k_and_min_score(self):
         self.upload(self.alice, "a.txt", PENGUINS + "\n\n" + VOLCANOES)

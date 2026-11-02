@@ -753,9 +753,54 @@
             "title": "Is Public",
             "type": "boolean"
           },
+          "last_ingest_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingest Error"
+          },
+          "last_ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingested At"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "refresh_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Minutes"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
           }
         },
         "required": [
@@ -767,6 +812,78 @@
           "has_source"
         ],
         "title": "CorpusOut",
+        "type": "object"
+      },
+      "CorpusStatus": {
+        "properties": {
+          "documents": {
+            "title": "Documents",
+            "type": "integer"
+          },
+          "last_ingest_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingest Error"
+          },
+          "last_ingested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingested At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "refresh_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Minutes"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          }
+        },
+        "required": [
+          "name",
+          "source_type",
+          "documents",
+          "refresh_minutes",
+          "last_ingested_at",
+          "last_ingest_error",
+          "overdue"
+        ],
+        "title": "CorpusStatus",
         "type": "object"
       },
       "CorpusUpdate": {
@@ -797,6 +914,76 @@
           }
         },
         "title": "CorpusUpdate",
+        "type": "object"
+      },
+      "DatabaseStatus": {
+        "properties": {
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "migrated": {
+            "title": "Migrated",
+            "type": "boolean"
+          },
+          "pgvector": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pgvector"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "latency_ms",
+          "revision",
+          "head",
+          "migrated",
+          "pgvector"
+        ],
+        "title": "DatabaseStatus",
         "type": "object"
       },
       "DocumentOut": {
@@ -918,6 +1105,39 @@
           "available"
         ],
         "title": "EmbeddingOption",
+        "type": "object"
+      },
+      "EmbeddingStatus": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "dimensions": {
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "provider",
+          "model",
+          "dimensions",
+          "available"
+        ],
+        "title": "EmbeddingStatus",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1268,6 +1488,120 @@
         "title": "PasswordReset",
         "type": "object"
       },
+      "ProviderCalls": {
+        "properties": {
+          "average_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Ms"
+          },
+          "error": {
+            "title": "Error",
+            "type": "integer"
+          },
+          "last_error_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "integer"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "ok",
+          "error",
+          "average_ms",
+          "last_success_at",
+          "last_error_at"
+        ],
+        "title": "ProviderCalls",
+        "type": "object"
+      },
+      "ProviderStatus": {
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderCalls"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "default": {
+            "title": "Default",
+            "type": "boolean"
+          },
+          "loaded": {
+            "title": "Loaded",
+            "type": "boolean"
+          },
+          "models": {
+            "title": "Models",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "loaded",
+          "reason",
+          "default",
+          "models",
+          "calls"
+        ],
+        "title": "ProviderStatus",
+        "type": "object"
+      },
       "RagOptions": {
         "properties": {
           "chunking_strategies": {
@@ -1320,6 +1654,31 @@
         "title": "RagOptions",
         "type": "object"
       },
+      "Readiness": {
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "Readiness",
+        "type": "object"
+      },
       "RefreshRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1333,6 +1692,39 @@
           "refresh_token"
         ],
         "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RequestStatus": {
+        "properties": {
+          "average_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Ms"
+          },
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "by_status",
+          "average_ms"
+        ],
+        "title": "RequestStatus",
         "type": "object"
       },
       "Role": {
@@ -1433,6 +1825,83 @@
           "hits"
         ],
         "title": "SearchResponse",
+        "type": "object"
+      },
+      "SystemStatus": {
+        "properties": {
+          "auth_configured": {
+            "title": "Auth Configured",
+            "type": "boolean"
+          },
+          "corpora": {
+            "items": {
+              "$ref": "#/components/schemas/CorpusStatus"
+            },
+            "title": "Corpora",
+            "type": "array"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "database": {
+            "$ref": "#/components/schemas/DatabaseStatus"
+          },
+          "embedding_models": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingStatus"
+            },
+            "title": "Embedding Models",
+            "type": "array"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatus"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "requests": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "title": "Uptime Seconds",
+            "type": "number"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "environment",
+          "uptime_seconds",
+          "database",
+          "auth_configured",
+          "providers",
+          "embedding_models",
+          "corpora",
+          "counts",
+          "requests"
+        ],
+        "title": "SystemStatus",
         "type": "object"
       },
       "TokenResponse": {
@@ -1623,6 +2092,33 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/status": {
+      "get": {
+        "description": "Database, schema version, providers, embedding models, corpora, counts and request totals.",
+        "operationId": "system_status_admin_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "System Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/admin/users": {
       "get": {
         "operationId": "list_users_admin_users_get",
@@ -3027,19 +3523,87 @@
     },
     "/health": {
       "get": {
-        "description": "200 when the API and database are reachable, 503 when the database is not.",
+        "description": "200 while the API process is running.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Health"
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "200 when every dependency the API needs is in place, 503 with the failing checks if not.",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Readiness"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Prometheus text format. Off (404) unless METRICS_TOKEN is set; send it as a bearer token.",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Metrics",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/models": {

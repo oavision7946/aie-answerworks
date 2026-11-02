@@ -10,7 +10,7 @@
 
 ## Contract test
 
-`api/tests/contract/test_openapi_snapshot.py` compares the live OpenAPI schema with `docs/openapi.json` and checks that every route except the open ones demands a token. Regenerate the snapshot with `make openapi` after an intended change.
+`api/tests/contract/test_openapi_snapshot.py` compares the live OpenAPI schema with `docs/openapi.json` and checks that every route except the open ones (`/health`, `/health/ready`, login and refresh) demands a token. Regenerate the snapshot with `make openapi` after an intended change.
 
 ## PostgreSQL tests
 
@@ -23,7 +23,7 @@ TEST_POSTGRES_URL=postgresql+psycopg://answerworks:answerworks@localhost:5432/sc
 
 ## End-to-end test
 
-`tests_e2e/test_full_flow.py` signs in, creates a user (who must change the temporary password), uploads a document, chats with documents on, reads the conversation back with its sources and checks that another user cannot see any of it. It needs no keys: `tests_e2e/config` holds a config with only the fake provider and fake embedding models.
+`tests_e2e/test_full_flow.py` checks liveness and readiness, signs in, reads the admin status, creates a user (who must change the temporary password), uploads a document, chats with documents on, reads the conversation back with its sources checks that another user cannot see any of it and that the run shows up in the provider counters. It needs no keys: `tests_e2e/config` holds a config with only the fake provider and fake embedding models.
 
 ```bash
 export COMPOSE_PROJECT_NAME=aw-e2e API_PORT=18000 UI_PORT=18501 CONFIG_DIR=./tests_e2e/config

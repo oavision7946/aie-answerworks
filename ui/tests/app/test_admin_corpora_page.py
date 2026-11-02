@@ -186,7 +186,7 @@ class TestAdminCorporaPage(unittest.TestCase):
         )
 
         at = self.open()
-        button(at, "Ingest source folder").click().run()
+        button(at, "Ingest source now").click().run()
 
         self.assertEqual(
             json.loads(ingest.calls.last.request.content),
@@ -207,7 +207,7 @@ class TestAdminCorporaPage(unittest.TestCase):
         )
 
         at = self.open()
-        button(at, "Ingest source folder").click().run()
+        button(at, "Ingest source now").click().run()
 
         self.assertNotIn("Failed", at.success[0].value)
 
@@ -217,16 +217,46 @@ class TestAdminCorporaPage(unittest.TestCase):
         )
 
         at = self.open()
-        button(at, "Ingest source folder").click().run()
+        button(at, "Ingest source now").click().run()
 
         self.assertIn("does not exist", at.error[0].value)
+
+    def test_the_source_line_says_what_is_ingested_how_often_and_what_went_wrong(self):
+        self.corpora.respond(
+            json=[
+                {
+                    **CORPUS,
+                    "source_type": "url",
+                    "refresh_minutes": 60,
+                    "last_ingested_at": "2026-11-02T09:00:00Z",
+                    "last_ingest_error": "1 item(s) could not be ingested: x.",
+                }
+            ]
+        )
+
+        at = self.open()
+
+        caption = next(c.value for c in at.caption if "configured source" in c.value)
+        self.assertIn("(web addresses)", caption)
+        self.assertIn("every 60 minutes", caption)
+        self.assertRegex(caption, r"Last ingested: .+ ago\.")
+        self.assertEqual(at.warning[0].value, "1 item(s) could not be ingested: x.")
+
+    def test_a_folder_corpus_that_was_never_ingested_says_so(self):
+        at = self.open()
+
+        caption = next(c.value for c in at.caption if "configured source" in c.value)
+        self.assertIn("(folder)", caption)
+        self.assertNotIn("Refreshed automatically", caption)
+        self.assertIn("Last ingested: never.", caption)
+        self.assertEqual(len(at.warning), 0)
 
     def test_corpora_without_a_source_have_no_ingest_button(self):
         self.corpora.respond(json=[{**CORPUS, "has_source": False}])
 
         at = self.open()
 
-        self.assertNotIn("Ingest source folder", [b.label for b in at.button])
+        self.assertNotIn("Ingest source now", [b.label for b in at.button])
 
     def test_documents_show_status_and_can_be_deleted(self):
         delete = self.mock.delete(f"{BASE}/documents/d-2").respond(204)

@@ -126,6 +126,10 @@ class CorpusOut(BaseModel):
     is_public: bool
     document_count: int
     has_source: bool  # an ingestion source is configured
+    source_type: str | None = None  # "filesystem" or "url"
+    refresh_minutes: int | None = None  # scheduled re-ingestion interval; null = manual only
+    last_ingested_at: datetime | None = None
+    last_ingest_error: str | None = None
 
 
 class CorpusCreate(BaseModel):

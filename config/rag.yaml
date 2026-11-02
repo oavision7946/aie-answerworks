@@ -48,4 +48,4 @@ retrieval:
 vector_store:
   type: pgvector
 
-supported_formats: [pdf, txt, md]
+supported_formats: [pdf, txt, md, docx, html, htm]

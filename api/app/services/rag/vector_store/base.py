@@ -34,6 +34,10 @@ class VectorStore(ABC):
         """Remove a document's chunks for one index, or all of them. Does not commit."""
 
     @abstractmethod
+    def has_index(self, db: Session, document_id: uuid.UUID, spec: IndexSpec) -> bool:
+        """Whether the document already has chunks made with `spec`."""
+
+    @abstractmethod
     def search(
         self,
         db: Session,

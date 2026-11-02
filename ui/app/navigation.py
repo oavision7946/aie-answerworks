@@ -21,6 +21,9 @@ PAGES = (
     PageSpec(
         "views/admin_corpora.py", "Admin · Corpora", ":material/folder_shared:", admin_only=True
     ),
+    PageSpec(
+        "views/admin_system.py", "Admin · System", ":material/monitor_heart:", admin_only=True
+    ),
 )
 
 

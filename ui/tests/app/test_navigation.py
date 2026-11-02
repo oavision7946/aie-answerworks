@@ -51,6 +51,8 @@ class TestPages(unittest.TestCase):
             at.switch_page(ADMIN_PAGE)
         with self.assertRaises(ValueError):
             at.switch_page("views/admin_corpora.py")
+        with self.assertRaises(ValueError):
+            at.switch_page("views/admin_system.py")
 
     @respx.mock
     def test_regular_users_can_reach_documents(self):
@@ -101,6 +103,7 @@ class TestPages(unittest.TestCase):
             "views/documents.py",
             ADMIN_PAGE,
             "views/admin_corpora.py",
+            "views/admin_system.py",
         ):
             with self.subTest(page=page):
                 at.switch_page(page).run()

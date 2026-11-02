@@ -50,6 +50,10 @@ class PgVectorStore(VectorStore):
         conditions = [Chunk.document_id == document_id, *(_matches(spec) if spec else [])]
         db.execute(delete(Chunk).where(*conditions))
 
+    def has_index(self, db: Session, document_id: uuid.UUID, spec: IndexSpec) -> bool:
+        query = select(Chunk.id).where(Chunk.document_id == document_id, *_matches(spec)).limit(1)
+        return db.scalar(query) is not None
+
     def search(
         self,
         db: Session,

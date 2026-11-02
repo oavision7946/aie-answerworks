@@ -16,12 +16,13 @@ Routes declare what they need with FastAPI dependencies from `app/core/permissio
 
 | Route | Anonymous | User | Admin |
 |---|---|---|---|
-| `GET /health` | allowed | allowed | allowed |
+| `GET /health`, `GET /health/ready` | allowed | allowed | allowed |
 | `GET /ask` | allowed | allowed | allowed |
 | `POST /ask`, `GET /models` | 401 | allowed | allowed |
 | `/auth/login`, `/auth/refresh` | allowed | allowed | allowed |
 | `/auth/me`, `/auth/change-password` | 401 | allowed (even with a pending password change) | allowed |
-| `/admin/users/*` | 401 | 403 | allowed |
+| `/admin/users/*`, `GET /admin/status` | 401 | 403 | allowed |
+| `GET /metrics` | 404 without `METRICS_TOKEN`; 401 without it as a bearer token | same | same |
 
 ## Lockout guard
 

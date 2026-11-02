@@ -1,7 +1,16 @@
 # Optional: shared corpora ingested by api/scripts/ingest.py --corpus <name>
+# and, when `refresh_minutes` is set, re-ingested by `python -m scripts.scheduler`.
 corpora: []
-# Example:
+# Examples:
 #  - name: company-handbook
 #    description: Internal policies
 #    source: { type: filesystem, path: ./data/handbook }
 #    public: false
+#  - name: product-docs
+#    description: Public product pages
+#    source:
+#      type: url
+#      urls:
+#        - https://example.com/docs/getting-started.html
+#        - https://example.com/docs/faq
+#    refresh_minutes: 1440   # once a day; omit for manual ingestion only

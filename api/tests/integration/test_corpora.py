@@ -3,10 +3,14 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import httpx
 
 from app.core.settings import CorporaConfig
 from app.services.rag import corpus_service
-from tests.rag_helpers import PENGUINS, VOLCANOES, RagTestCase, pdf_bytes
+from app.services.rag.sources.url import UrlSource
+from tests.rag_helpers import PENGUINS, VOLCANOES, RagTestCase, docx_bytes, pdf_bytes
 
 
 class CorpusTestCase(RagTestCase):
@@ -72,6 +76,10 @@ class TestManagement(CorpusTestCase):
                 "is_public": False,
                 "document_count": 0,
                 "has_source": False,
+                "source_type": None,
+                "refresh_minutes": None,
+                "last_ingested_at": None,
+                "last_ingest_error": None,
             },
         )
 
@@ -265,7 +273,7 @@ class TestIngestion(CorpusTestCase):
         (self.root / "sub").mkdir()
         (self.root / "sub" / "volcanoes.md").write_text(VOLCANOES)
         (self.root / "scan.pdf").write_bytes(b"not really a pdf")
-        (self.root / "ignored.docx").write_bytes(b"x")
+        (self.root / "ignored.xlsx").write_bytes(b"x")
         corpus = self.corpus_from_config()
 
         response = self.ingest(corpus)
@@ -379,6 +387,127 @@ class TestIngestion(CorpusTestCase):
         corpus = self.corpus_from_config()
 
         self.assertEqual(self.ingest(corpus, embedding="offline").status_code, 503)
+
+    def corpus_info(self, corpus):
+        listed = self.client.get("/corpora", headers=self.as_admin()).json()
+        return next(c for c in listed if c["id"] == str(corpus.id))
+
+    def test_files_that_did_not_change_are_not_embedded_again(self):
+        (self.root / "a.txt").write_text(PENGUINS)
+        (self.root / "b.txt").write_text(VOLCANOES)
+        corpus = self.corpus_from_config()
+        self.ingest(corpus)
+        calls = []
+        real_embed = self.provider.embed
+        self.provider.embed = lambda *a, **k: calls.append(a) or real_embed(*a, **k)
+
+        self.assertEqual(sorted(self.ingest(corpus).json()["indexed"]), ["a.txt", "b.txt"])
+        self.assertEqual(calls, [])
+
+        (self.root / "a.txt").write_text("Penguins changed.")
+        self.ingest(corpus)
+        self.assertEqual(len(calls), 1)  # only the edited file
+        self.ingest(corpus, embedding="fake-b", chunking="para")  # a new index is still built
+        self.assertEqual(len(calls), 3)
+
+    def test_the_corpus_records_when_ingestion_ran_and_what_failed(self):
+        (self.root / "a.txt").write_text(PENGUINS)
+        corpus = self.corpus_from_config()
+        self.assertIsNone(self.corpus_info(corpus)["last_ingested_at"])
+
+        self.ingest(corpus)
+        info = self.corpus_info(corpus)
+        self.assertIsNotNone(info["last_ingested_at"])
+        self.assertIsNone(info["last_ingest_error"])
+        self.assertEqual(info["source_type"], "filesystem")
+
+        for name in "bcde":
+            (self.root / f"{name}.txt").write_bytes(b"\xff\xfe")
+        self.ingest(corpus)
+        self.assertEqual(
+            self.corpus_info(corpus)["last_ingest_error"],
+            "4 item(s) could not be ingested: b.txt, c.txt, d.txt and 1 more.",
+        )
+
+        self.provider.embed = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))
+        (self.root / "a.txt").write_text("Penguins changed.")
+        self.ingest(corpus)
+        self.assertIn("could not be ingested", self.corpus_info(corpus)["last_ingest_error"])
+
+    def test_a_missing_source_directory_is_recorded(self):
+        corpus = self.corpus_from_config(self.root / "nope")
+
+        self.ingest(corpus)
+
+        self.assertEqual(
+            self.corpus_info(corpus)["last_ingest_error"], "The source directory does not exist."
+        )
+
+    def test_word_and_web_files_are_ingested(self):
+        (self.root / "policy.docx").write_bytes(docx_bytes("Penguins live in Antarctica."))
+        (self.root / "page.html").write_text("<h1>Volcanoes</h1><p>Lava erupts.</p>")
+        corpus = self.corpus_from_config()
+
+        self.assertEqual(
+            sorted(self.ingest(corpus).json()["indexed"]), ["page.html", "policy.docx"]
+        )
+
+    def url_corpus(self, handler, refresh_minutes=None):
+        config = CorporaConfig.model_validate(
+            {
+                "corpora": [
+                    {
+                        "name": "web",
+                        "public": True,
+                        "refresh_minutes": refresh_minutes,
+                        "source": {"type": "url", "urls": ["https://example.com/guide"]},
+                    }
+                ]
+            }
+        )
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        patcher = mock.patch.object(
+            corpus_service, "UrlSource", lambda urls, formats: UrlSource(urls, formats, client)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with self.db_session() as db:
+            return corpus_service.sync_configured(db, config)["web"]
+
+    def test_a_url_corpus_is_ingested_and_an_outage_keeps_what_was_indexed(self):
+        state = {"status": 200}
+
+        def handler(request):
+            return httpx.Response(
+                state["status"], headers={"content-type": "text/html"}, text=f"<p>{PENGUINS}</p>"
+            )
+
+        corpus = self.url_corpus(handler, refresh_minutes=30)
+        info = self.corpus_info(corpus)
+        self.assertEqual((info["source_type"], info["refresh_minutes"]), ("url", 30))
+
+        self.assertEqual(self.ingest(corpus).json()["indexed"], ["example.com/guide.html"])
+
+        state["status"] = 503
+        body = self.ingest(corpus).json()
+        self.assertEqual(body["failed"], {"example.com/guide.html": "The server answered 503."})
+        [doc] = self.client.get(
+            "/documents", params={"corpus_id": str(corpus.id)}, headers=self.as_admin()
+        ).json()
+        self.assertEqual(doc["status"], "ready")  # still searchable while the site is down
+        self.assertIn("1 item(s)", self.corpus_info(corpus)["last_ingest_error"])
+        self.assertIn("example.com/guide.html", self.hit_files(self.search(self.alice)))
+
+    def test_a_url_that_never_worked_is_listed_as_failed(self):
+        corpus = self.url_corpus(lambda request: httpx.Response(404))
+
+        self.ingest(corpus)
+
+        [doc] = self.client.get(
+            "/documents", params={"corpus_id": str(corpus.id)}, headers=self.as_admin()
+        ).json()
+        self.assertEqual((doc["filename"], doc["status"]), ("example.com/guide.html", "failed"))
+        self.assertEqual(doc["error"], "The server answered 404.")
 
 
 if __name__ == "__main__":

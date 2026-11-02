@@ -11,7 +11,15 @@ class SourceFile:
     data: bytes
 
 
+@dataclass(frozen=True)
+class SourceFailure:
+    """An item the source could not read. The rest of the source is still processed."""
+
+    name: str
+    reason: str
+
+
 class Source(ABC):
     @abstractmethod
-    def files(self) -> Iterator[SourceFile]:
-        """Yield every file this source offers."""
+    def files(self) -> Iterator[SourceFile | SourceFailure]:
+        """Yield every file this source offers, or why one of them could not be read."""

@@ -2,9 +2,10 @@
 
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.config import REPO_ROOT, clear_config_cache, load_env, load_yaml
@@ -177,9 +178,27 @@ class AppConfig(_Strict):
 # --- corpora.yaml -----------------------------------------------------------------------------
 
 
-class CorpusSource(_Strict):
+class FilesystemSourceConfig(_Strict):
     type: Literal["filesystem"]
     path: str
+
+
+class UrlSourceConfig(_Strict):
+    type: Literal["url"]
+    # Fetched with GET. Only http and https, and only the addresses listed here: the config is
+    # written by the operator, never by users.
+    urls: list[str] = Field(min_length=1)
+
+    @field_validator("urls")
+    @classmethod
+    def urls_must_be_http(cls, urls: list[str]) -> list[str]:
+        for url in urls:
+            if urlsplit(url).scheme not in ("http", "https") or not urlsplit(url).netloc:
+                raise ValueError(f"source url {url!r} must be an http or https address")
+        return urls
+
+
+CorpusSource = Annotated[FilesystemSourceConfig | UrlSourceConfig, Field(discriminator="type")]
 
 
 class CorpusConfig(_Strict):
@@ -187,6 +206,9 @@ class CorpusConfig(_Strict):
     description: str = ""
     source: CorpusSource
     public: bool = False
+    # Re-ingest with the default embedding model and splitter this often (minutes) when the
+    # scheduler runs (`python -m scripts.scheduler`). Omit for manual ingestion only.
+    refresh_minutes: int | None = Field(default=None, gt=0)
 
 
 class CorporaConfig(_Strict):
@@ -212,6 +234,8 @@ class EnvSettings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://answerworks:answerworks@localhost:5432/answerworks"
     jwt_secret: str = ""
+    # Enables GET /metrics (Prometheus). Empty keeps the endpoint off.
+    metrics_token: str = ""
     api_base_url: str = "http://localhost:8000"
 
 

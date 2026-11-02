@@ -156,6 +156,31 @@ class TestOtherValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "unique"):
             CorporaConfig.model_validate({"corpora": [corpus, corpus]})
 
+    def test_url_sources_need_http_addresses_and_refresh_must_be_positive(self):
+        def corpus(**fields):
+            return {"corpora": [{"name": "w", "source": {"type": "url", **fields}}]}
+
+        ok = CorporaConfig.model_validate(corpus(urls=["https://a.test/x", "http://b.test"]))
+        self.assertEqual(ok.corpora[0].source.urls[1], "http://b.test")
+        for urls in (["ftp://a.test/x"], ["file:///etc/passwd"], ["https://"], ["a.test/x"], []):
+            with self.subTest(urls=urls), self.assertRaises(ValidationError):
+                CorporaConfig.model_validate(corpus(urls=urls))
+        with self.assertRaises(ValidationError):
+            CorporaConfig.model_validate(corpus(urls=["https://a.test"], path="x"))
+
+        base = {"name": "a", "source": {"type": "filesystem", "path": "./a"}}
+        self.assertIsNone(
+            CorporaConfig.model_validate({"corpora": [base]}).corpora[0].refresh_minutes
+        )
+        self.assertEqual(
+            CorporaConfig.model_validate({"corpora": [{**base, "refresh_minutes": 15}]})
+            .corpora[0]
+            .refresh_minutes,
+            15,
+        )
+        with self.assertRaises(ValidationError):
+            CorporaConfig.model_validate({"corpora": [{**base, "refresh_minutes": 0}]})
+
     def load_with(self, edit):
         """load_settings() against a copy of the shipped config with `edit(rag)` applied."""
         with tempfile.TemporaryDirectory() as tmp:

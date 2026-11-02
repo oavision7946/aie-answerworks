@@ -53,6 +53,16 @@ class TestPgVectorRanking(unittest.TestCase):
             self.assertGreater(hits[0].score, hits[1].score)
             self.assertEqual(len(other), 2)
 
+    def test_the_status_checks_see_the_schema_version_and_the_extension(self):
+        from app.services import status_service
+
+        database = status_service.database(self.engine)
+
+        self.assertEqual(database.status, "ok")
+        self.assertTrue(database.migrated)
+        self.assertEqual(database.revision, database.head)
+        self.assertIs(database.pgvector, True)
+
 
 if __name__ == "__main__":
     unittest.main()

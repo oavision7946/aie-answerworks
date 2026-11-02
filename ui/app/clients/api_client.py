@@ -121,6 +121,10 @@ class CorpusInfo(BaseModel):
     is_public: bool = False
     document_count: int = 0
     has_source: bool = False
+    source_type: str | None = None
+    refresh_minutes: int | None = None
+    last_ingested_at: str | None = None
+    last_ingest_error: str | None = None
 
 
 class EmbeddingOption(BaseModel):
@@ -532,6 +536,75 @@ def delete_document(document_id: str, token: str | None = None) -> None:
 
 
 # --- corpora -------------------------------------------------------------------------------------
+
+
+class DatabaseStatus(BaseModel):
+    status: str
+    latency_ms: float | None = None
+    revision: str | None = None
+    head: str | None = None
+    migrated: bool = False
+    pgvector: bool | None = None
+
+
+class ProviderCalls(BaseModel):
+    operation: str
+    ok: int = 0
+    error: int = 0
+    average_ms: float | None = None
+    last_error_at: str | None = None
+
+
+class ProviderStatus(BaseModel):
+    name: str
+    type: str
+    loaded: bool
+    reason: str | None = None
+    default: bool = False
+    models: int = 0
+    calls: list[ProviderCalls] = []
+
+
+class EmbeddingStatus(BaseModel):
+    name: str
+    provider: str
+    model: str
+    dimensions: int
+    available: bool
+
+
+class CorpusStatus(BaseModel):
+    name: str
+    source_type: str | None = None
+    documents: int = 0
+    refresh_minutes: int | None = None
+    last_ingested_at: str | None = None
+    last_ingest_error: str | None = None
+    overdue: bool = False
+
+
+class RequestStatus(BaseModel):
+    total: int = 0
+    by_status: dict[str, int] = {}
+    average_ms: float | None = None
+
+
+class SystemStatus(BaseModel):
+    status: str
+    version: str
+    environment: str
+    uptime_seconds: float
+    database: DatabaseStatus
+    auth_configured: bool
+    providers: list[ProviderStatus] = []
+    embedding_models: list[EmbeddingStatus] = []
+    corpora: list[CorpusStatus] = []
+    counts: dict[str, int] = {}
+    requests: RequestStatus
+
+
+def get_system_status(token: str | None = None) -> SystemStatus:
+    return _parse(_send("GET", "/admin/status", token), SystemStatus)
 
 
 def list_corpora(token: str | None = None) -> list[CorpusInfo]:

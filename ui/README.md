@@ -17,7 +17,8 @@ The UI talks to the API only through `app/clients/api_client.py`; the API addres
 | Documents | `app/views/documents.py` | `/documents`, `/corpora`, `/rag/options` | My uploads (upload with a chosen embedding model and splitter, index metadata, chunks, add an index, delete) and read-only shared corpora, in separate sections |
 | Ask | `app/views/ask.py` | `POST /ask` | One-off question-answer, nothing stored |
 | Admin · Users | `app/views/admin_users.py` | `/admin/users` | Admins only: list, create, role, deactivate, reset password |
-| Admin · Corpora | `app/views/admin_corpora.py` | `/corpora`, `/documents` | Admins only: create, public flag, grant/revoke, upload, ingest, delete |
+| Admin · Corpora | `app/views/admin_corpora.py` | `/corpora`, `/documents` | Admins only: create, public flag, grant/revoke, upload, ingest, source and refresh interval, last run and problem, delete |
+| Admin · System | `app/views/admin_system.py` | `/admin/status` | Admins only: database and schema, providers and their call results, embedding models, corpora's last ingestion, counts and request totals |
 
 Chat also has an "Answer from my documents" switch with retrieval settings (embedding model, splitting strategy, corpora) and shows the sources of each answer.
 

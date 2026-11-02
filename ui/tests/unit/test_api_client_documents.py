@@ -8,7 +8,7 @@ import respx
 from app import config
 from app.clients import api_client
 from app.clients.api_client import AuthExpired, RagChoice
-from tests.app.helpers import CORPUS, INDEX, RAG_OPTIONS
+from tests.app.helpers import CORPUS, INDEX, RAG_OPTIONS, STATUS
 
 BASE = config.API_BASE_URL.rstrip("/")
 GPT = api_client.ModelInfo(provider="openai", id="gpt-4o", label="GPT-4o")
@@ -223,6 +223,26 @@ class TestCorpora(unittest.TestCase):
         self.assertEqual(sent(grant), {"user_id": "u-1"})
         self.assertEqual(sent(ingest), {"embedding": "small"})
         self.assertEqual((result.indexed, result.failed), (["a.txt"], {"b.pdf": "bad"}))
+
+    @respx.mock
+    def test_system_status_is_parsed(self):
+        route = respx.get(f"{BASE}/admin/status").respond(json=STATUS)
+
+        status = api_client.get_system_status("tok")
+
+        self.assertEqual(route.calls.last.request.headers["Authorization"], "Bearer tok")
+        self.assertEqual((status.status, status.database.revision), ("ok", "0004"))
+        self.assertEqual(status.providers[1].reason, "ANTHROPIC_API_KEY is not set")
+        self.assertEqual(status.requests.by_status["2xx"], 38)
+
+    @respx.mock
+    def test_system_status_for_a_user_is_refused(self):
+        respx.get(f"{BASE}/admin/status").respond(
+            403, json={"detail": "Administrator access is required."}
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Administrator access"):
+            api_client.get_system_status("tok")
 
 
 if __name__ == "__main__":

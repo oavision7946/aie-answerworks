@@ -6,23 +6,46 @@ One interface (API + UI) for working with several AI models, with retrieval-augm
 
 FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration in YAML, secrets in `.env`.
 
+## Contents
+
+- [What works today](#what-works-today)
+  - [Known limits](#known-limits)
+- [Prerequisites](#prerequisites)
+- [Quickstart](#quickstart)
+  - [Run with Docker Compose](#run-with-docker-compose)
+  - [Clean up](#clean-up)
+- [Adding users (admin)](#adding-users-admin)
+- [Demo: run the whole system without API keys](#demo-run-the-whole-system-without-api-keys)
+- [Demo: run the whole system with API keys](#demo-run-the-whole-system-with-api-keys)
+- [Demo: saved conversations (API)](#demo-saved-conversations-api)
+- [Demo: the web app (chat, conversations, admin)](#demo-the-web-app-chat-conversations-admin)
+- [Demo: your documents (RAG)](#demo-your-documents-rag)
+- [API access in short](#api-access-in-short)
+  - [The standalone demo page](#the-standalone-demo-page)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Layout](#layout)
+- [Roadmap](#roadmap)
+- [License](#license)
+
 ## What works today
 
 - **Several providers behind one interface:** Anthropic, OpenAI, and any OpenAI-compatible server (Ollama, vLLM, llama.cpp, ...). Providers and models are declared in [config/providers.yaml](config/providers.yaml); a provider whose API key is missing is skipped, so you only need keys for the ones you use.
-- **Login and accounts:** every endpoint except `/health` and `/auth/*` requires a bearer token. There is no self-registration: an admin bootstraps with `make create-admin` and then creates accounts through the admin API. Passwords are hashed with Argon2, sessions use short-lived JWT access tokens plus refresh tokens, accounts can be deactivated, and a new user must choose their own password before using anything else. Roles are `admin` and `user`.
+- **Login and accounts:** every endpoint except `/health`, `/health/ready` and `/auth/*` requires a bearer token. There is no self-registration: an admin bootstraps with `make create-admin` and then creates accounts through the admin API. Passwords are hashed with Argon2, sessions use short-lived JWT access tokens plus refresh tokens, accounts can be deactivated, and a new user must choose their own password before using anything else. Roles are `admin` and `user`.
 - **Saved conversations:** `POST /chat` sends a message into a conversation (or starts a new one) and the model sees the earlier messages. Conversations and messages are stored in PostgreSQL per user, with provider, model, tokens, latency and cost on every reply, and nobody else can read, rename or delete them. List, read, rename and delete through `/conversations`. Streaming works here too.
 - **Question-answer endpoint:** `POST /ask` answers a question with the provider and model you choose (or the default), optionally streaming the answer as server-sent events. Transient provider errors are retried with exponential backoff, and the API returns safe error messages without leaking provider internals.
 - **Transparent usage:** every answer reports provider, model, token count, latency and estimated cost. Cost is `null` for models with no pricing configured.
 - **Web UI:** a Streamlit app with sign-in, a forced password-change screen and these pages: **Chat** (saved conversations with a model picker, streaming, per-answer usage and optional document sources), **Conversations** (open, rename, delete), **Documents** (your uploads and the shared corpora you can read, with how each was indexed), **Ask** (one-off question-answer, nothing saved) and, for admins only, **Admin · Users** and **Admin · Corpora**.
-- **RAG (answers from your documents):** upload PDF, TXT or Markdown files (private to you) or have an admin build shared corpora, then turn on documents in Chat or pass `use_rag` to `/chat`. Answers cite the passages they used. **Embedding models and text-splitting strategies are configurable and interchangeable** (several can be defined in [config/rag.yaml](config/rag.yaml)), and every stored chunk records which embedding model and which splitter produced it, so a document can be indexed several ways and compared. Retrieval is strictly scoped: your private documents never reach another user, and shared corpora are visible only to users with a grant (or to everyone if public), with revocation applying immediately. See [docs/rag.md](docs/rag.md).
-- **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and a `/health` endpoint that reports database status. Login needs the database.
+- **RAG (answers from your documents):** upload PDF, TXT, Markdown, Word (`.docx`) or HTML files (private to you) or have an admin build shared corpora (from a folder or a list of web addresses, optionally refreshed on a schedule), then turn on documents in Chat or pass `use_rag` to `/chat`. Answers cite the passages they used. **Embedding models and text-splitting strategies are configurable and interchangeable** (several can be defined in [config/rag.yaml](config/rag.yaml)), and every stored chunk records which embedding model and which splitter produced it, so a document can be indexed several ways and compared. Retrieval is strictly scoped: your private documents never reach another user, and shared corpora are visible only to users with a grant (or to everyone if public), with revocation applying immediately. See [docs/rag.md](docs/rag.md).
+- **API foundation:** validated configuration (typos in YAML fail at startup), a PostgreSQL connection with Alembic migrations, and separate liveness (`/health`) and readiness (`/health/ready`) endpoints. Login needs the database.
+- **Observability:** an admin **System** page and `GET /admin/status` show the database and schema version, which providers loaded and how their calls are going, embedding model availability, each corpus's last ingestion, row counts and request totals; an optional token-protected `GET /metrics` serves the same in the Prometheus format. See [docs/observability.md](docs/observability.md).
 - **Docker Compose:** `docker compose up --build` starts PostgreSQL with pgvector, the API (migrations applied at start) and the web app. See [Run with Docker Compose](#run-with-docker-compose).
 - **Documentation site, contract and end-to-end tests:** a MkDocs site built from [docs/](docs/index.md), a committed OpenAPI snapshot that a contract test checks, and an end-to-end test of sign-in, upload, chat with sources and saved history.
 - **A keyless fake provider** that echoes your question, for trying the app, UI work and tests without spending tokens.
 
-### Not built yet
+### Known limits
 
-Deliberately simple for now: uploads are indexed while the request waits, similarity search is exact (no approximate vector index), and only PDF, TXT and Markdown are parsed. The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
+Deliberately simple for now: uploads are indexed while the request waits, similarity search is exact (no approximate vector index), and only text is read (PDF, TXT, Markdown, Word and HTML; no OCR for scanned pages). The API supports two modes side by side, and both are kept: question-answer (`/ask`, one stateless question and answer) and chat (`/chat`, stored conversations). The UI offers both.
 
 ## Prerequisites
 
@@ -68,7 +91,7 @@ docker compose up --build -d
 docker compose run --rm api python -m scripts.create_admin
 ```
 
-Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). `docker compose down` stops everything and keeps the data (`down -v` deletes it).
+Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`. `docker compose down` stops everything and keeps the data (`down -v` deletes it).
 
 ### Clean up
 
@@ -648,10 +671,14 @@ Setting `"is_public": true` (`PATCH /corpora/$CORPUS`) makes a corpus readable b
 
 **9. Ingest a folder (optional)**
 
-Corpora can also be filled from a folder, declared in the private copy of `corpora.yaml`:
+Corpora can also be filled from a folder, declared in the private copy of `corpora.yaml`. HTML and Word files are read as well as text and PDF:
 
 ```bash
 mkdir -p /tmp/aw-handbook && cp /tmp/penguins.txt /tmp/aw-handbook/
+cat > /tmp/aw-handbook/volcanoes.html <<'EOF'
+<html><head><title>Volcanoes</title></head><body><h1>Volcanoes</h1>
+<p>Volcanoes erupt molten lava from magma chambers beneath the crust.</p></body></html>
+EOF
 cat > /tmp/aw-config/corpora.yaml <<'EOF'
 corpora:
   - name: folder-demo
@@ -662,15 +689,51 @@ make ingest ARGS="--corpus folder-demo"                                         
 make ingest ARGS="--corpus folder-demo --embedding $EMB_LARGE --chunking fixed" # a second index
 ```
 
-The corpus appears in **Admin · Corpora** with its documents and both indexes. Run the command again after editing the files to refresh them. A file that cannot be read is kept as `failed` with the reason.
+The corpus appears in **Admin · Corpora** with its documents and both indexes. Run the command again after editing the files to refresh them: unchanged files are not embedded again. A file that cannot be read is kept as `failed` with the reason.
 
-**10. Clean up**
+**10. Web addresses and scheduled refresh (optional)**
 
-Stop `make run-ui` and `make run-api`, then:
+A corpus can also be filled from a list of web addresses, and refreshed on a schedule. Serve a page from your machine and declare a corpus with `refresh_minutes`:
+
+```bash
+mkdir -p /tmp/aw-web && cp /tmp/aw-handbook/volcanoes.html /tmp/aw-web/page.html
+(cd /tmp/aw-web && python3 -m http.server 18999 --bind 127.0.0.1 &)
+cat > /tmp/aw-config/corpora.yaml <<'EOF'
+corpora:
+  - name: web-demo
+    description: A page fetched over HTTP
+    public: true
+    source:
+      type: url
+      urls:
+        - http://127.0.0.1:18999/page.html
+        - http://127.0.0.1:18999/missing.html
+    refresh_minutes: 1
+EOF
+cd api && uv run python -m scripts.scheduler --once; cd ..       # ingests it, because it was never ingested
+```
+
+The page is stored as `127.0.0.1:18999/page.html`, and the address that answers 404 is listed as `failed`. In **Admin · Corpora** the corpus shows its source, "Refreshed automatically every 1 minutes", when it last ran and the problem. Run the scheduler again right away and nothing happens: the corpus is not due for another minute, and when it is, the unchanged page is not embedded again. For a long-running scheduler use `uv run python -m scripts.scheduler` (it checks every minute) or the Compose profile in [Run with Docker Compose](#run-with-docker-compose).
+
+**11. Check the system status**
+
+Liveness and readiness are open; the detailed view needs an admin token:
+
+```bash
+curl -s localhost:8000/health                       # {"status":"ok"}
+curl -s localhost:8000/health/ready                 # database, migrations, auth, providers (503 when one fails)
+curl -s localhost:8000/admin/status -H "Authorization: Bearer $TOKEN" | python3 -m json.tool | head -60
+```
+
+In the web app open **Admin · System**: database and schema version, each provider with its call results, the embedding models and whether they are available, the corpora with their last ingestion (the `web-demo` corpus appears as up to date, with its problem noted), and request totals. To see readiness fail, stop the database (`make db-down`) and call `/health/ready` again: `/health` still answers 200, `/health/ready` answers 503. Start it again with `make db-up`. To try the Prometheus endpoint, put `METRICS_TOKEN=demo-token` in `.env`, restart `make run-api` and run `curl -s localhost:8000/metrics -H "Authorization: Bearer demo-token"`. More in [docs/observability.md](docs/observability.md).
+
+**12. Clean up**
+
+Stop `make run-ui` and `make run-api` and the page server (`kill $(lsof -ti :18999)`), then:
 
 ```bash
 make db-down              # keeps the data; `make db-destroy` deletes it
-rm -rf /tmp/aw-config /tmp/aw-handbook /tmp/penguins.txt
+rm -rf /tmp/aw-config /tmp/aw-handbook /tmp/aw-web /tmp/penguins.txt
 unset ANSWERWORKS_CONFIG_DIR
 make clean
 ```
@@ -679,12 +742,14 @@ make clean
 
 | Endpoint | Who | Purpose |
 |---|---|---|
-| `GET /health` | anyone | API and database status |
+| `GET /health`, `GET /health/ready` | anyone | Liveness (process is up) and readiness (database migrated, JWT secret set, a provider loaded) |
 | `POST /auth/login`, `POST /auth/refresh` | anyone | Get or renew a token pair |
 | `GET /auth/me`, `POST /auth/change-password` | signed in (works while a password change is pending) | Current user, change own password |
 | `GET /models`, `POST /ask` | signed in, password change done | Models and stateless questions |
 | `POST /chat`, `/conversations` (create, list, read, rename, delete) | signed in, password change done; each user sees only their own | Saved conversations and chat |
 | `POST /admin/users`, `GET /admin/users`, `PATCH /admin/users/{id}`, `POST /admin/users/{id}/reset-password` | admin | User management |
+| `GET /admin/status` | admin | Detailed system status for dashboards |
+| `GET /metrics` | `METRICS_TOKEN` bearer | Prometheus metrics (off unless the token is set) |
 
 Details are in [api/README.md](api/README.md) and the interactive docs at `/docs`.
 
@@ -699,8 +764,8 @@ Details are in [api/README.md](api/README.md) and the interactive docs at `/docs
 | [config/providers.yaml](config/providers.yaml) | Providers, their models, optional per-model pricing (USD per 1M tokens), timeouts, retries and the default provider |
 | [config/app.yaml](config/app.yaml) | App name and environment, CORS origins, auth token lifetimes, how many past messages chat sends to the model, upload limit |
 | [config/rag.yaml](config/rag.yaml) | Named embedding models and text-splitting strategies (with defaults), retrieval settings and accepted file types |
-| [config/corpora.yaml](config/corpora.yaml) | Shared corpora to ingest from a folder with `make ingest` |
-| `.env` | Secrets and deployment values only: provider API keys, `DATABASE_URL`, `JWT_SECRET` (at least 16 characters), and optionally `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` for `make create-admin`. Never committed |
+| [config/corpora.yaml](config/corpora.yaml) | Shared corpora to ingest from a folder or a list of web addresses with `make ingest`, each optionally refreshed every `refresh_minutes` by the scheduler |
+| `.env` | Secrets and deployment values only: provider API keys, `DATABASE_URL`, `JWT_SECRET` (at least 16 characters), and optionally `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD` for `make create-admin` and `METRICS_TOKEN` to turn on `/metrics`. Never committed |
 
 All YAML is validated at startup, so a typo or a broken reference fails loudly instead of silently misbehaving. Set `ANSWERWORKS_CONFIG_DIR` to use a different config directory.
 
@@ -727,7 +792,7 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | `api/` | FastAPI backend and its tests; see [api/README.md](api/README.md) |
 | `ui/` | Streamlit frontend and its tests; see [ui/README.md](ui/README.md) |
 | `config/` | Non-secret YAML configuration |
-| `docs/` | Documentation site sources (`mkdocs.yml`): architecture, configuration, deployment, API, RAG, UI, data model, admin guide, testing, contributing; plus `openapi.json` |
+| `docs/` | Documentation site sources (`mkdocs.yml`): architecture, configuration, deployment, observability, API, RAG, UI, data model, admin guide, testing, contributing; plus `openapi.json` |
 | `docker-compose.yml`, `api/Dockerfile`, `ui/Dockerfile` | Run the database, API and web app in containers |
 | `tests_e2e/` | End-to-end test and its keyless config |
 | `Makefile` | Install, run, test, lint, migrate, create-admin, ingest and local-database commands |
@@ -746,6 +811,7 @@ Tests never reach a real provider; adapters are tested against mocked HTTP. Auto
 | 6 | UI: chat, conversations, question-answer and admin users pages | Done |
 | 7 | RAG: documents, shared corpora, configurable embedding models and splitters, retrieval with citations | Done |
 | 8 | Docker Compose, docs site, contract and end-to-end tests | Done |
+| 9 | Liveness/readiness and system status, Word and HTML parsers, web-address sources, scheduled corpus refresh | Done |
 
 ## License
 

@@ -8,7 +8,7 @@ With documents turned on, a chat message is answered from passages found in file
 file -> parse -> split into chunks -> embed each chunk -> store -> (later) embed the question -> nearest chunks
 ```
 
-1. **Parse.** PDF, TXT and Markdown are turned into plain text. Anything else is refused with a message. The text is stored with the document so it can be indexed again without the original file.
+1. **Parse.** PDF, TXT, Markdown, Word (`.docx`) and HTML (`.html`, `.htm`) are turned into plain text. Anything else is refused with a message. HTML keeps the visible text and its title, and drops scripts, styles and markup. Word keeps paragraphs and table text. Files must be UTF-8 when they are text. The text is stored with the document so it can be indexed again without the original file.
 2. **Split.** The text is cut into chunks by the chosen *splitting strategy*.
 3. **Embed.** Every chunk is turned into a vector by the chosen *embedding model*.
 4. **Store.** Chunks and vectors go into the `chunks` table (pgvector), together with a record of how they were made.
@@ -78,9 +78,33 @@ See [Documents and corpora](api/documents.md) for the endpoints.
 
 `POST /rag/search` runs only the retrieval step, without a language model, which is useful for comparing indexes.
 
+## Sources and scheduled refresh
+
+A shared corpus can be filled from a *source* declared in `config/corpora.yaml`:
+
+| Type | Reads | Notes |
+|---|---|---|
+| `filesystem` | Every supported file under a folder, recursively | The folder must exist where the API (or `make ingest`) runs. In a container, mount it |
+| `url` | A fixed list of `http` or `https` addresses | Pages, PDFs and Word files. Only the listed addresses are fetched (never an address a user typed), at most 20 MB each, with a 20 second timeout and 3 redirects. A page is named `host/path.html` |
+
+Each address or file is handled on its own: one that cannot be read is recorded as `failed` with the reason and the rest continue. A document that was indexed before and cannot be fetched right now (the site is down) stays as it was and stays searchable.
+
+**Unchanged documents cost nothing.** Ingesting again compares the new text with the stored text. If it is the same and the document already has an index for the chosen embedding model and splitter, nothing is embedded. Changed text replaces all of the document's indexes, so re-index the other models afterwards.
+
+**Scheduled refresh.** Give a corpus `refresh_minutes` and run the scheduler, which re-ingests it with the default embedding model and splitter whenever that many minutes have passed since its last ingestion (manual or scheduled):
+
+```bash
+cd api && uv run python -m scripts.scheduler          # keeps running, checks every minute
+cd api && uv run python -m scripts.scheduler --once   # one pass, for cron
+```
+
+With Docker Compose: `docker compose --profile scheduler up -d`. Run one scheduler per database. Every corpus records when it was last ingested and what went wrong (`last_ingested_at`, `last_ingest_error`); the [system status](observability.md) flags a scheduled corpus that has gone more than twice its interval without a run.
+
 ## Limits and notes
 
 - Uploads are processed while the request waits. The size limit is `limits.max_upload_mb` in `config/app.yaml`.
 - Similarity is exact (a scan of the matching chunks), not approximate. There is no vector index yet, because vectors of different sizes share one column.
 - The fake provider's embeddings are a hashed bag of words: they find passages that share words with the question. They are for demos and tests; real embedding models also match meaning.
 - The first `ingest` of a corpus creates the corpus from `config/corpora.yaml`; later runs update it.
+- Only text is read: images inside PDFs and Word files, scanned pages without a text layer and content that a web page builds with JavaScript are not.
+- The splitting methods are the four named in `rag.yaml`: `fixed`, `recursive`, `paragraph` and `sentence`.

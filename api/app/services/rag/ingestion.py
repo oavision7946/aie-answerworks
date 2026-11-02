@@ -13,7 +13,7 @@ from app.services.rag.embeddings import Embedder
 from app.services.rag.errors import RagError
 from app.services.rag.index import IndexSpec
 from app.services.rag.parsers import ParseError, parse
-from app.services.rag.sources.base import Source
+from app.services.rag.sources.base import Source, SourceFailure
 from app.services.rag.vector_store.base import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,9 @@ def ingest_file(
     existing = document_repo.get_in_corpus(db, corpus_id, filename) if corpus_id else None
     document = existing or Document(owner_id=owner_id, corpus_id=corpus_id, filename=filename)
     changed = existing is not None and existing.text != text
+    if existing is not None and not changed and store.has_index(db, existing.id, spec):
+        # Same text, already indexed this way: nothing to embed (re-ingestion is cheap).
+        return existing
     document.text = text
     document.size_bytes = len(data)
     document.status = DocumentStatus.READY
@@ -87,6 +90,12 @@ def ingest_corpus(
     """Ingest every file of `source` into `corpus`. A failing file is recorded, not fatal."""
     report = IngestReport()
     for file in source.files():
+        if isinstance(file, SourceFailure):
+            logger.warning("Could not read %s for %s: %s", file.name, corpus.name, file.reason)
+            report.failed[file.name] = file.reason
+            if document_repo.get_in_corpus(db, corpus.id, file.name) is None:
+                _record_failure(db, corpus, file.name, 0, file.reason)
+            continue  # a document that was indexed before stays searchable while the source is down
         try:
             ingest_file(
                 db,

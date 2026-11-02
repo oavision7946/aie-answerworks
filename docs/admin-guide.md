@@ -62,14 +62,18 @@ curl -s localhost:8000/corpora/$CORPUS_ID/ingest -H "Authorization: Bearer $TOKE
   -H 'Content-Type: application/json' -d '{"embedding": "openai-small", "chunking": "recursive"}'
 ```
 
-Corpora declared in `config/corpora.yaml` (with a `filesystem` source) are created or updated by the command-line tool, which indexes every PDF, TXT and Markdown file under the folder:
+Corpora declared in `config/corpora.yaml` are created or updated by the command-line tool. A `filesystem` source indexes every supported file (PDF, TXT, Markdown, Word, HTML) under a folder, and a `url` source fetches a list of web addresses:
 
 ```bash
 make ingest ARGS="--corpus handbook"
 make ingest ARGS="--all --embedding openai-large --chunking sentence"   # a second index for the same files
 ```
 
-Run it again after the files change: documents are matched by their path in the folder. A file that cannot be read is kept with status `failed` and a reason, and shows to admins only. The **Admin · Corpora** page offers the same operations. Details: [Documents and corpora](api/documents.md), [RAG](rag.md).
+Run it again after the files change: documents are matched by their path in the folder (or by `host/path` for web pages), and unchanged ones are not embedded again. A file that cannot be read is kept with status `failed` and a reason, and shows to admins only. Set `refresh_minutes` on a corpus and run `python -m scripts.scheduler` (Compose profile `scheduler`) to refresh it automatically; the Corpora page shows the source, the interval, when it last ran and the last problem. The **Admin · Corpora** page offers the same operations. Details: [Documents and corpora](api/documents.md), [RAG](rag.md).
+
+## Check the system
+
+**Admin · System** in the web app (or `GET /admin/status`) shows whether the database and its schema are current, which providers loaded and why one did not, how each provider's calls have gone since the API started, which embedding models are usable, when each corpus was last ingested, row counts and request totals. For monitoring from outside, see [Observability](observability.md).
 
 ## Deactivate a user
 

@@ -21,7 +21,11 @@ Every route needs a bearer token and a completed password change (see [authoriza
 | GET | `/corpora/{id}/access` | admin | Users who have been granted it |
 | POST | `/corpora/{id}/access` | admin | Grant a user (`{"user_id": "..."}`, 204) |
 | DELETE | `/corpora/{id}/access/{user_id}` | admin | Revoke (204); effective immediately |
-| POST | `/corpora/{id}/ingest` | admin | Read the corpus' configured source folder and index every file |
+| POST | `/corpora/{id}/ingest` | admin | Read the corpus' configured source (folder or web addresses) and index every file; unchanged documents are not embedded again |
+
+## Corpus fields
+
+`GET /corpora` returns, for each corpus: `id`, `name`, `description`, `is_public`, `document_count`, `has_source`, `source_type` (`filesystem`, `url` or null), `refresh_minutes` (the scheduled interval, or null), `last_ingested_at` and `last_ingest_error` (what went wrong in the last run, or null).
 
 ## Uploading
 
@@ -30,7 +34,7 @@ curl -s localhost:8000/documents -H "Authorization: Bearer $TOKEN" \
   -F file=@notes.txt -F embedding=openai-small -F chunking=recursive
 ```
 
-`embedding` and `chunking` are names from `rag.yaml`; both are optional and default to `default_embedding` and `default_chunking`. The response lists `indexes`, one per way the document was indexed:
+Accepted types are listed by `GET /rag/options` (`supported_formats`: PDF, TXT, Markdown, DOCX, HTML by default). `embedding` and `chunking` are names from `rag.yaml`; both are optional and default to `default_embedding` and `default_chunking`. The response lists `indexes`, one per way the document was indexed:
 
 ```json
 {
