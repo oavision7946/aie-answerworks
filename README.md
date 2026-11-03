@@ -12,8 +12,8 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
   - [Known limits](#known-limits)
 - [Prerequisites](#prerequisites)
 - [Quickstart](#quickstart)
+  - [Clean up the local run](#clean-up-the-local-run)
   - [Run with Docker Compose](#run-with-docker-compose)
-  - [Clean up](#clean-up)
 - [Adding users (admin)](#adding-users-admin)
 - [Demo: run the whole system without API keys](#demo-run-the-whole-system-without-api-keys)
 - [Demo: run the whole system with API keys](#demo-run-the-whole-system-with-api-keys)
@@ -81,6 +81,18 @@ Open http://localhost:8501 and sign in with the admin account you just created. 
 
 If something is already listening on port 5432, use another port: `make db-up DB_PORT=55432`, then put the `DATABASE_URL` it prints into `.env`. `make db-down` stops the database (data is kept); `make db-destroy` deletes the data.
 
+### Clean up the local run
+
+Stop `make run-api` and `make run-ui` with Ctrl+C in their terminals, then:
+
+```bash
+make db-down              # stop the database, keeping its data
+make db-destroy           # or delete the container and its data (you will need `make migrate` and `make create-admin` again)
+make clean                # remove Python and tool caches
+```
+
+Local files you may want to remove too: `.env` (it holds your keys) and the virtual environments in `api/.venv` and `ui/.venv`. Pass the same `DB_PORT`/`DB_CONTAINER` values to `db-down` and `db-destroy` if you overrode them in `db-up`.
+
 ### Run with Docker Compose
 
 The same system without installing Python or `uv` on the host:
@@ -92,18 +104,6 @@ docker compose run --rm api python -m scripts.create_admin
 ```
 
 Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`. `docker compose down` stops everything and keeps the data (`down -v` deletes it).
-
-### Clean up
-
-Stop `make run-api` and `make run-ui` with Ctrl+C in their terminals, then:
-
-```bash
-make db-down              # stop the database, keeping its data
-make db-destroy           # or delete the container and its data (you will need `make migrate` and `make create-admin` again)
-make clean                # remove Python and tool caches
-```
-
-Local files you may want to remove too: `.env` (it holds your keys) and the virtual environments in `api/.venv` and `ui/.venv`. Pass the same `DB_PORT`/`DB_CONTAINER` values to `db-down` and `db-destroy` if you overrode them in `db-up`.
 
 ## Adding users (admin)
 
