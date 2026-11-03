@@ -14,13 +14,14 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - [Quickstart](#quickstart)
   - [Clean up the local run](#clean-up-the-local-run)
   - [Run with Docker Compose](#run-with-docker-compose)
+- [Examples](#examples)
   - [Credentials used in the examples](#credentials-used-in-the-examples)
-- [Adding users (admin)](#adding-users-admin)
-- [Demo: run the whole system without API keys](#demo-run-the-whole-system-without-api-keys)
-- [Demo: run the whole system with API keys](#demo-run-the-whole-system-with-api-keys)
-- [Demo: saved conversations (API)](#demo-saved-conversations-api)
-- [Demo: the web app (chat, conversations, admin)](#demo-the-web-app-chat-conversations-admin)
-- [Demo: your documents (RAG)](#demo-your-documents-rag)
+  - [Adding users (admin)](#adding-users-admin)
+  - [Example: run the whole system without API keys](#example-run-the-whole-system-without-api-keys)
+  - [Example: run the whole system with API keys](#example-run-the-whole-system-with-api-keys)
+  - [Example: saved conversations (API)](#example-saved-conversations-api)
+  - [Example: the web app (chat, conversations, admin)](#example-the-web-app-chat-conversations-admin)
+  - [Example: your documents (RAG)](#example-your-documents-rag)
 - [API access in short](#api-access-in-short)
   - [The standalone demo page](#the-standalone-demo-page)
 - [Configuration](#configuration)
@@ -106,6 +107,8 @@ docker compose run --rm api python -m scripts.create_admin
 
 Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`. `docker compose down` stops everything and keeps the data (`down -v` deletes it).
 
+## Examples
+
 ### Credentials used in the examples
 
 The examples below read the accounts from shell variables instead of fixed values. Set them once in each terminal you use (choose your own values; passwords are 12 to 128 characters):
@@ -120,7 +123,7 @@ export USER1_PASSWORD=<password the user chooses at first sign-in>
 
 `USER1_PASSWORD` only works after the user has replaced the temporary one (see "See the forced password change" below). Quote a value that contains spaces or shell characters, for example `export ADMIN_PASSWORD='a long passphrase'`.
 
-## Adding users (admin)
+### Adding users (admin)
 
 There is no sign-up page: an admin creates each account with a temporary password, and the user must replace it at first sign-in. With the API running and the first admin created (`make create-admin`):
 
@@ -152,7 +155,7 @@ curl -s -X PATCH localhost:8000/admin/users/$ID \
 
 Give the temporary password to the user over a secure channel. The same calls work from the interactive docs at http://localhost:8000/docs (sign in with `POST /auth/login`, click **Authorize**). More in the [admin guide](docs/admin-guide.md).
 
-## Demo: run the whole system without API keys
+### Example: run the whole system without API keys
 
 This walks through login, the forced password change, and the admin API using the built-in fake provider, which echoes your question, so it costs nothing and needs no provider keys. Nothing here edits tracked files.
 
@@ -237,9 +240,9 @@ unset ANSWERWORKS_CONFIG_DIR
 
 To use real providers instead, see the next section.
 
-## Demo: run the whole system with API keys
+### Example: run the whole system with API keys
 
-Same flow as the demo above, but answers come from real models. Requests are billed by the provider, so keep questions short. The Anthropic, OpenAI and local adapters are tested against mocked HTTP only; this demo is how you check them against the real services.
+Same flow as the example above, but answers come from real models. Requests are billed by the provider, so keep questions short. The Anthropic, OpenAI and local adapters are tested against mocked HTTP only; this demo is how you check them against the real services.
 
 **1. Prepare**
 
@@ -258,7 +261,7 @@ Edit `.env`:
 make install
 make db-up
 make migrate
-unset ANSWERWORKS_CONFIG_DIR     # in case the fake-provider config from the other demo is still set
+unset ANSWERWORKS_CONFIG_DIR     # in case the fake-provider config from the other example is still set
 ```
 
 To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: true` for `local` in `config/providers.yaml`, adjust its `base_url` and model ids, and make sure the server is running. To change which models are offered or their prices, edit the lists in the same file.
@@ -311,19 +314,19 @@ Open http://localhost:8501 and sign in. Pick a model in the sidebar, ask a quest
 
 **6. Accounts and rules**
 
-Create a second user, see the forced password change and try the admin rules exactly as in steps 6 to 8 of the keyless demo. A user's token works with every configured provider.
+Create a second user, see the forced password change and try the admin rules exactly as in steps 6 to 8 of the keyless example. A user's token works with every configured provider.
 
 **7. Clean up**
 
 Stop both services, then `make db-down` (or `make db-destroy` to delete the data) and `make clean` to remove Python and tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.coverage`). Remove your keys from `.env` if this is a shared machine.
 
-## Demo: saved conversations (API)
+### Example: saved conversations (API)
 
 Builds on the demos above: the same running system, now with conversations that are stored and remembered. It uses curl against the API, because the UI does not use saved conversations yet. It works with the fake provider or with real keys. With the fake provider the answers just echo, so the point is what gets stored and who can see it; with real keys you can also watch the model use earlier messages.
 
 **1. Start from a running system**
 
-Follow steps 1 to 4 of the keyless demo (or 1 to 3 of the demo with keys) above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
+Follow steps 1 to 4 of the keyless example (or 1 to 3 of the example with keys) above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
 
 **2. Sign in and send a first message**
 
@@ -379,7 +382,7 @@ Delete is shown at the end of the next step.
 
 **7. See that conversations are private**
 
-Create a second user and sign in as them (steps 6 and 7 of the keyless demo, including the forced password change), then:
+Create a second user and sign in as them (steps 6 and 7 of the keyless example, including the forced password change), then:
 
 ```bash
 USER1_TOKEN=$(login "$USER1_EMAIL" "$USER1_PASSWORD")
@@ -396,9 +399,9 @@ Not even an admin can read another user's conversations through these endpoints.
 
 Same as the demos above. Deleting a conversation also deletes its messages; stopping the services, `make db-down` (or `make db-destroy` to delete the data) and `make clean` is all that is left.
 
-## Demo: the web app (chat, conversations, admin)
+### Example: the web app (chat, conversations, admin)
 
-The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 4 of the keyless demo (or 1 to 3 of the demo with keys) above: database, `make migrate`, first admin, `make run-api`, then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
+The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 4 of the keyless example (or 1 to 3 of the example with keys) above: database, `make migrate`, first admin, `make run-api`, then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
 
 **1. Sign in and find your way around**
 
@@ -421,7 +424,7 @@ curl -s localhost:8000/auth/me -H "Authorization: Bearer $TOKEN"
 
 On **Chat**, send "My favourite colour is green. Please remember it.", then "Which colour did I say?". Under each answer you see the model, tokens and estimated cost. Pick another model in the sidebar to change who answers the next message; tick **Stream responses** to watch the answer arrive in pieces. With the fake provider the answers just echo; with real keys the second answer mentions green because the first message is sent along with it. **＋ New chat** starts a fresh conversation.
 
-Same from the API: the [saved conversations demo](#demo-saved-conversations-api), steps 2 to 5 (`POST /chat`, with `"stream": true` for streaming).
+Same from the API: the [saved conversations example](#example-saved-conversations-api), steps 2 to 5 (`POST /chat`, with `"stream": true` for streaming).
 
 **3. Conversations**
 
@@ -452,7 +455,7 @@ curl -s localhost:8000/ask -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 
 Open **Admin · Users**. The table lists every account with its role, whether it is active, and whether a password change is pending. Under **Add a user**, enter an email, a temporary password (12 to 128 characters) and a role, then **Create user**. Under **Manage a user**, pick someone to change their role, deactivate them, or set a new temporary password. Try deactivating yourself: the API refuses, and the page shows its message.
 
-Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of the keyless demo.
+Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of the keyless example.
 
 **6. See it as a regular user**
 
@@ -467,9 +470,9 @@ curl -s localhost:8000/admin/users -H "Authorization: Bearer $USER1_TOKEN"     #
 
 Stop `make run-ui` and `make run-api`, then `make db-down` (or `make db-destroy` to delete the data), then `make clean` to remove caches.
 
-## Demo: your documents (RAG)
+### Example: your documents (RAG)
 
-Builds on the web-app demo. You will upload a document, see exactly how it was split and embedded, index it a second way with a different embedding model and splitter, ask questions with and without documents, check that other users cannot see your files, and share a corpus. Every UI step has a "Same from the API" curl equivalent.
+Builds on the web-app example. You will upload a document, see exactly how it was split and embedded, index it a second way with a different embedding model and splitter, ask questions with and without documents, check that other users cannot see your files, and share a corpus. Every UI step has a "Same from the API" curl equivalent.
 
 The keyless setup uses the fake provider's embeddings, which are a hashed bag of words: they find passages that **share words** with your question, which is enough to see the whole mechanism. Real embedding models also match meaning. To try them, follow **Prepare (with keys)** in step 1 instead of **Prepare (keyless)**; every other step is the same for both.
 
@@ -477,7 +480,7 @@ The keyless setup uses the fake provider's embeddings, which are a hashed bag of
 
 Skip to **Prepare (with keys)** below if you use real providers.
 
-Start from the first demo (database, `make migrate`, the private copy of the config in `/tmp/aw-config`, the first admin, `make run-api` and `make run-ui`). The pgvector tables come from the same `make migrate`; run it again if you set the system up before documents existed. Then give the private config two fake embedding models and a few splitting strategies, and restart `make run-api`:
+Start from the first example (database, `make migrate`, the private copy of the config in `/tmp/aw-config`, the first admin, `make run-api` and `make run-ui`). The pgvector tables come from the same `make migrate`; run it again if you set the system up before documents existed. Then give the private config two fake embedding models and a few splitting strategies, and restart `make run-api`:
 
 ```bash
 cat > /tmp/aw-config/rag.yaml <<'EOF'
@@ -520,7 +523,7 @@ EMB_LARGE=fake-large
 
 **1. Prepare (with keys)**
 
-Start from the [demo with API keys](#demo-run-the-whole-system-with-api-keys) (steps 1 to 4: `.env`, database, `make migrate`, first admin, `make run-api`, `make run-ui`). Do not use the private config of the keyless demo; run `unset ANSWERWORKS_CONFIG_DIR` so the real `config/rag.yaml` applies. That file defines the embedding models and splitters:
+Start from the [example with API keys](#example-run-the-whole-system-with-api-keys) (steps 1 to 4: `.env`, database, `make migrate`, first admin, `make run-api`, `make run-ui`). Do not use the private config of the keyless example; run `unset ANSWERWORKS_CONFIG_DIR` so the real `config/rag.yaml` applies. That file defines the embedding models and splitters:
 
 | Name | Provider | Model | Needs |
 | --- | --- | --- | --- |
@@ -547,7 +550,7 @@ EMB_LARGE=openai-large
 
 Check that the models you use show `"available": true`. A model whose key is missing is `false` and the API log names the variable to set. With `local-nomic`, set `EMB_LARGE=local-nomic` instead.
 
-Differences from the keyless demo to expect in the steps below:
+Differences from the keyless example to expect in the steps below:
 
 - The splitters are the ones in `config/rag.yaml` (`recursive` 800, `sentence` 500, `fixed` 1000 characters). The demo file is about 270 characters, so each index holds a single chunk and the chunk counts are equal; the index table still shows the different models and splitters. Use a longer file to see the counts differ.
 - Real embeddings match meaning, not just shared words, so a question such as "what do penguins eat" ranks the penguin passage first even if the wording differs, and scores are cosine similarities you can compare between indexes of the same model only.
