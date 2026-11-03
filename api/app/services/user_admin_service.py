@@ -33,7 +33,7 @@ def _get(db: Session, user_id: uuid.UUID) -> User:
 
 def update_user(db: Session, acting: User, user_id: uuid.UUID, data: UserUpdate) -> User:
     user = _get(db, user_id)
-    if user.id == acting.id and (data.is_active is False or data.role == Role.USER):
+    if user.id == acting.id and (data.is_active is False or data.role not in (None, Role.ADMIN)):
         raise AuthError(400, "You cannot deactivate or demote your own account.")
     if data.role is not None:
         user.role = data.role

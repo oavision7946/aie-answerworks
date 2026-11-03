@@ -10,8 +10,10 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
+from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.db.models import Role, User
 from app.db.session import create_db_engine
 
 API_DIR = Path(__file__).resolve().parents[2]
@@ -133,6 +135,22 @@ class MigrationChecks:
         command.downgrade(cfg, "base")
 
         self.assertNotIn("users", inspect(create_db_engine(self.url)).get_table_names())
+
+    def test_monitor_role_is_stored_and_downgrade_turns_it_into_user(self):
+        cfg = alembic_config(self.url)
+        command.upgrade(cfg, "head")
+        engine = create_db_engine(self.url)
+        with Session(engine) as db:
+            db.add(User(email="watch@example.com", password_hash="h", role=Role.MONITOR))
+            db.add(User(email="root@example.com", password_hash="h", role=Role.ADMIN))
+            db.commit()
+
+        command.downgrade(cfg, "0004")
+
+        with engine.connect() as connection:
+            roles = dict(connection.exec_driver_sql("SELECT email, role FROM users").all())
+        self.assertEqual(roles, {"watch@example.com": "user", "root@example.com": "admin"})
+        command.upgrade(cfg, "head")  # and back again
 
     def test_upgrade_is_repeatable(self):
         cfg = alembic_config(self.url)

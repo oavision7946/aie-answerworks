@@ -15,6 +15,7 @@ from app.api.v1 import (
     conversations,
     corpora,
     documents,
+    monitoring,
     rag,
 )
 from app.core.telemetry import telemetry
@@ -24,6 +25,7 @@ register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(metrics.router)
 app.include_router(admin_status.router)
+app.include_router(monitoring.router)
 app.include_router(auth.router)
 app.include_router(admin_users.router)
 app.include_router(ask.router)

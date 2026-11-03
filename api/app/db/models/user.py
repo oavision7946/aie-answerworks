@@ -10,6 +10,7 @@ from app.db.base import Base
 
 class Role(enum.StrEnum):
     ADMIN = "admin"
+    MONITOR = "monitor"  # a regular user who may also open the monitoring views
     USER = "user"
 
 

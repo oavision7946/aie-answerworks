@@ -40,6 +40,12 @@ class TestUserModel(unittest.TestCase):
             db.commit()
             self.assertEqual(db.scalar(select(User.role)), Role.ADMIN)
 
+    def test_monitor_role_roundtrips(self):
+        with Session(self.engine) as db:
+            db.add(User(email="watch@example.com", password_hash="h", role=Role.MONITOR))
+            db.commit()
+            self.assertEqual(db.scalar(select(User.role)), Role.MONITOR)
+
 
 if __name__ == "__main__":
     unittest.main()

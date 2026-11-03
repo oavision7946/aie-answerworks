@@ -7,6 +7,7 @@ What the system offers to check, from outside or in a dashboard, that its parts 
 | `GET /health` | anyone | Is the API process running? (liveness) |
 | `GET /health/ready` | anyone | Can it serve requests? (readiness) |
 | `GET /admin/status` | administrators | Everything below in detail, as JSON |
+| `GET /monitoring/status` | administrators and monitors | The same report as `/admin/status` |
 | `GET /metrics` | holder of `METRICS_TOKEN` | The same numbers in the Prometheus text format |
 
 The web app shows `/admin/status` on **Admin · System**.

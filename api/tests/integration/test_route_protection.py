@@ -16,6 +16,7 @@ PROTECTED = [
     ("get", "/auth/me"),
     ("post", "/auth/change-password"),
     ("get", "/admin/users"),
+    ("get", "/monitoring/status"),
 ]
 
 

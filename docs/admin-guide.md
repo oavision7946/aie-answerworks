@@ -31,7 +31,7 @@ All routes need an admin access token.
 |---|---|
 | Create | `POST /admin/users` with `email` and `temporary_password` (optional `role`) |
 | List | `GET /admin/users` |
-| Change role or active flag | `PATCH /admin/users/{id}` with `role` and/or `is_active` |
+| Change role or active flag | `PATCH /admin/users/{id}` with `role` (`user`, `monitor` or `admin`) and/or `is_active`. A `monitor` can read `GET /monitoring/status` but has no admin access. |
 | Reset password | `POST /admin/users/{id}/reset-password` with `temporary_password` |
 
 ```bash

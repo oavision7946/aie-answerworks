@@ -749,6 +749,7 @@ make clean
 | `POST /chat`, `/conversations` (create, list, read, rename, delete) | signed in, password change done; each user sees only their own | Saved conversations and chat |
 | `POST /admin/users`, `GET /admin/users`, `PATCH /admin/users/{id}`, `POST /admin/users/{id}/reset-password` | admin | User management |
 | `GET /admin/status` | admin | Detailed system status for dashboards |
+| `GET /monitoring/status` | admin, monitor | The same status for the `monitor` role |
 | `GET /metrics` | `METRICS_TOKEN` bearer | Prometheus metrics (off unless the token is set) |
 
 Details are in [api/README.md](api/README.md) and the interactive docs at `/docs`.

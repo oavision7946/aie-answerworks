@@ -8,7 +8,7 @@ Every route except `/health`, `/health/ready`, `/auth/login` and `/auth/refresh`
 |---|---|---|
 | Health | `GET /health` (liveness), `GET /health/ready` (readiness) | [Observability](../observability.md) |
 | Accounts | `POST /auth/login`, `/auth/refresh`, `/auth/change-password`, `GET /auth/me` | [Authentication](authentication.md) |
-| Admin | `/admin/users` (create, list, update, reset password), `GET /admin/status` | [Authorization](authorization.md), [Observability](../observability.md) |
+| Admin | `/admin/users` (create, list, update, reset password), `GET /admin/status`, `GET /monitoring/status` (admin or monitor) | [Authorization](authorization.md), [Observability](../observability.md) |
 | Metrics | `GET /metrics` (Prometheus; needs `METRICS_TOKEN`, off without it) | [Observability](../observability.md) |
 | Models | `GET /models` | |
 | Questions | `POST /ask` (one stateless question; nothing is stored) | |

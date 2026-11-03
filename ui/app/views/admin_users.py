@@ -39,7 +39,7 @@ with st.form("create_user", clear_on_submit=True):
     temporary = st.text_input(
         "Temporary password", type="password", help="12 to 128 characters. They must change it."
     )
-    new_role = st.selectbox("Role", ["user", "admin"])
+    new_role = st.selectbox("Role", ["user", "monitor", "admin"])
     created = st.form_submit_button("Create user")
 if created:
     try:
@@ -55,7 +55,7 @@ if created:
 st.markdown("### Manage a user")
 by_email = {u.email: u for u in users}
 chosen = by_email[st.selectbox("User", list(by_email))]
-roles = ["user", "admin"]
+roles = ["user", "monitor", "admin"]
 role = st.selectbox("Role", roles, index=roles.index(chosen.role), key=f"role-{chosen.id}")
 active = st.checkbox("Active", value=chosen.is_active, key=f"active-{chosen.id}")
 if st.button("Save changes", key=f"save-{chosen.id}"):

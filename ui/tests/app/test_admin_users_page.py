@@ -70,6 +70,20 @@ class TestAdminUsersPage(unittest.TestCase):
         )
         self.assertIn("Created ana@example.com", at.success[0].value)
 
+    def test_the_monitor_role_can_be_chosen_when_creating_and_changing_users(self):
+        create = self.mock.post(f"{BASE}/admin/users").respond(201, json=ANA)
+
+        at = self.open()
+        self.assertEqual(at.selectbox[0].options, ["user", "monitor", "admin"])
+        at.text_input[0].set_value("ana@example.com")
+        at.text_input[1].set_value("temporary pass 123")
+        at.selectbox[0].select("monitor")
+        next(b for b in at.button if b.label == "Create user").click().run()
+
+        self.assertEqual(json.loads(create.calls.last.request.content)["role"], "monitor")
+        at.selectbox[1].select("ana@example.com").run()  # the "User" chooser
+        self.assertEqual(at.selectbox(key="role-u-1").options, ["user", "monitor", "admin"])
+
     def test_create_error_is_shown(self):
         self.mock.post(f"{BASE}/admin/users").respond(
             409, json={"detail": "A user with this email already exists."}

@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core.telemetry import telemetry
-from app.db.models import Corpus
+from app.db.models import Corpus, Role
 from app.db.session import get_engine
 from app.main import app
 from app.services import status_service
@@ -274,6 +274,53 @@ class TestTelemetry(unittest.TestCase):
 
         self.assertEqual(telemetry.snapshot()["requests_total"], 0)
         self.assertLess(telemetry.uptime_seconds, 5)
+
+
+class TestMonitoringStatus(StatusTestCase):
+    def setUp(self):
+        super().setUp()
+        self.monitor = self.add_user("monitor@example.com", role=Role.MONITOR)
+
+    def status(self, user):
+        return self.client.get("/monitoring/status", headers=self.as_user(user))
+
+    def test_administrators_and_monitors_may_read_it(self):
+        self.stamp()
+
+        for user in (self.admin, self.monitor):
+            with self.subTest(role=user.role):
+                response = self.status(user)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["status"], "ok")
+
+    def test_it_is_the_same_report_the_admin_endpoint_gives(self):
+        self.stamp()
+
+        monitoring = self.status(self.monitor).json()
+        admin = self.client.get("/admin/status", headers=self.as_user(self.admin)).json()
+
+        for report in (monitoring, admin):
+            del report["uptime_seconds"], report["requests"]  # change from call to call
+            del report["database"]["latency_ms"]
+        self.assertEqual(monitoring, admin)
+
+    def test_regular_users_and_anonymous_callers_are_refused(self):
+        self.assertEqual(self.client.get("/monitoring/status").status_code, 401)
+        self.assertEqual(self.status(self.alice).status_code, 403)
+
+    def test_accounts_that_are_not_enabled_are_refused(self):
+        pending = self.add_user("pending@example.com", role=Role.MONITOR, must_change_password=True)
+        disabled = self.add_user("off@example.com", role=Role.MONITOR, is_active=False)
+
+        self.assertEqual(self.status(pending).status_code, 403)
+        self.assertEqual(self.status(disabled).status_code, 403)
+
+    def test_a_monitor_is_not_an_administrator(self):
+        headers = self.as_user(self.monitor)
+
+        for path in ("/admin/status", "/admin/users"):
+            with self.subTest(route=path):
+                self.assertEqual(self.client.get(path, headers=headers).status_code, 403)
 
 
 if __name__ == "__main__":

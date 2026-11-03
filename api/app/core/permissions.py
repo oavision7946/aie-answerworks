@@ -3,6 +3,7 @@
 - current_user:  valid access token for an existing, active user (password change may be pending)
 - active_user:   current_user whose password change is not pending (use on normal routes)
 - admin_user:    active_user with the admin role
+- monitoring_user: active_user with the admin or monitor role
 """
 
 from typing import Annotated
@@ -55,4 +56,10 @@ def active_user(user: Annotated[User, Depends(current_user)]) -> User:
 def admin_user(user: Annotated[User, Depends(active_user)]) -> User:
     if user.role != Role.ADMIN:
         raise HTTPException(403, "Administrator access is required.")
+    return user
+
+
+def monitoring_user(user: Annotated[User, Depends(active_user)]) -> User:
+    if user.role not in (Role.ADMIN, Role.MONITOR):
+        raise HTTPException(403, "Monitoring access is required.")
     return user

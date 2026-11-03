@@ -1730,6 +1730,7 @@
       "Role": {
         "enum": [
           "admin",
+          "monitor",
           "user"
         ],
         "title": "Role",
@@ -3627,6 +3628,33 @@
           }
         ],
         "summary": "Models"
+      }
+    },
+    "/monitoring/status": {
+      "get": {
+        "description": "The same system status as `/admin/status`, for administrators and monitors.",
+        "operationId": "monitoring_status_monitoring_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Monitoring Status",
+        "tags": [
+          "monitoring"
+        ]
       }
     },
     "/rag/options": {

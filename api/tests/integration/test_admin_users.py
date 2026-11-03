@@ -99,6 +99,9 @@ class TestCreateAndList(AdminTestCase):
 
     def test_can_create_an_admin(self):
         self.assertEqual(self.create(role="admin").json()["role"], "admin")
+        self.assertEqual(
+            self.create(email="watch@example.com", role="monitor").json()["role"], "monitor"
+        )
 
     def test_duplicate_email_conflicts_case_insensitively(self):
         self.assertEqual(self.create(email="MEMBER@example.com").status_code, 409)
@@ -147,6 +150,13 @@ class TestUpdate(AdminTestCase):
         self.assertFalse(deactivated["is_active"])
         self.assertEqual(self.login("target@example.com").status_code, 403)
 
+    def test_monitor_role_can_be_granted_and_removed(self):
+        granted = self.patch(self.target.id, {"role": "monitor"}).json()
+        revoked = self.patch(self.target.id, {"role": "user"}).json()
+
+        self.assertEqual(granted["role"], "monitor")
+        self.assertEqual(revoked["role"], "user")
+
     def test_reactivate(self):
         self.patch(self.target.id, {"is_active": False})
         self.patch(self.target.id, {"is_active": True})
@@ -156,6 +166,7 @@ class TestUpdate(AdminTestCase):
     def test_admin_cannot_lock_themselves_out(self):
         self.assertEqual(self.patch(self.admin.id, {"is_active": False}).status_code, 400)
         self.assertEqual(self.patch(self.admin.id, {"role": "user"}).status_code, 400)
+        self.assertEqual(self.patch(self.admin.id, {"role": "monitor"}).status_code, 400)
         self.assertEqual(self.patch(self.admin.id, {"role": "admin"}).status_code, 200)
 
     def test_unknown_user_and_bad_id(self):
