@@ -41,6 +41,3 @@ repos:
         entry: scripts/check_private_leaks.sh commit-msg
         language: script
         stages: [commit-msg]
-~
-~
-~
