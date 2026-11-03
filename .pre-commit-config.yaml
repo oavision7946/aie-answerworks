@@ -27,3 +27,20 @@ repos:
         language: system
         files: ^ui/
         pass_filenames: false
+
+      - id: private-leak-check
+        name: Block private or internal material
+        entry: scripts/check_private_leaks.sh staged
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: private-leak-check-msg
+        name: Block private terms in commit message
+        entry: scripts/check_private_leaks.sh commit-msg
+        language: script
+        stages: [commit-msg]
+~
+~
+~
