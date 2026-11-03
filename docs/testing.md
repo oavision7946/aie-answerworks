@@ -28,10 +28,11 @@ TEST_POSTGRES_URL=postgresql+psycopg://answerworks:answerworks@localhost:5432/sc
 ```bash
 export COMPOSE_PROJECT_NAME=aw-e2e API_PORT=18000 UI_PORT=18501 CONFIG_DIR=./tests_e2e/config
 docker compose up --build -d
-docker compose run --rm -e BOOTSTRAP_ADMIN_EMAIL=e2e-admin@example.com \
-  -e BOOTSTRAP_ADMIN_PASSWORD='e2e admin passphrase' api python -m scripts.create_admin
+export E2E_ADMIN_EMAIL=<admin email> E2E_ADMIN_PASSWORD=<admin password>   # 12 to 128 characters
+docker compose run --rm -e BOOTSTRAP_ADMIN_EMAIL="$E2E_ADMIN_EMAIL" \
+  -e BOOTSTRAP_ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD" api python -m scripts.create_admin
 make test-e2e
 docker compose down -v
 ```
 
-The test is skipped when the API is not reachable. `E2E_API_URL`, `E2E_UI_URL`, `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` override the defaults used above.
+The test is skipped when the API is not reachable or the two admin variables are unset. `E2E_API_URL` and `E2E_UI_URL` override the ports used above. The regular user it creates gets a random email and passwords unless you set `E2E_USER1_EMAIL`, `E2E_USER1_TEMP_PASSWORD` and `E2E_USER1_PASSWORD`.

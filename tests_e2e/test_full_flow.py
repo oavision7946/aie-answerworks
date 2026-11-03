@@ -3,11 +3,15 @@
 Needs the API (and optionally the UI) running with the keyless config in tests_e2e/config and an
 admin account created. `make test-e2e` runs it; docs/testing.md shows how to start the stack.
 
-Environment (defaults match the commands in docs/testing.md):
-    E2E_API_URL, E2E_UI_URL, E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD
+Environment:
+    E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD   the admin created for the stack (required)
+    E2E_API_URL, E2E_UI_URL               default to the ports used in docs/testing.md
+    E2E_USER1_EMAIL, E2E_USER1_TEMP_PASSWORD, E2E_USER1_PASSWORD
+                                          the regular user the test creates (random if unset)
 """
 
 import os
+import secrets
 import unittest
 import uuid
 
@@ -15,8 +19,8 @@ import httpx
 
 API = os.environ.get("E2E_API_URL", "http://localhost:18000").rstrip("/")
 UI = os.environ.get("E2E_UI_URL", "http://localhost:18501").rstrip("/")
-ADMIN_EMAIL = os.environ.get("E2E_ADMIN_EMAIL", "e2e-admin@example.com")
-ADMIN_PASSWORD = os.environ.get("E2E_ADMIN_PASSWORD", "e2e admin passphrase")
+ADMIN_EMAIL = os.environ.get("E2E_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("E2E_ADMIN_PASSWORD", "")
 
 DOCUMENT = (
     "Penguins live in the Southern Hemisphere, mostly in Antarctica. They eat fish and krill.\n"
@@ -37,6 +41,8 @@ def login(client: httpx.Client, email: str, password: str) -> str:
 class TestFullFlow(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if not (ADMIN_EMAIL and ADMIN_PASSWORD):
+            raise unittest.SkipTest("Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD.")
         cls.client = httpx.Client(base_url=API, timeout=30)
         try:
             cls.client.get("/health").raise_for_status()
@@ -58,8 +64,9 @@ class TestFullFlow(unittest.TestCase):
         self.assertTrue(status["database"]["pgvector"])
 
         # 2. A regular user, who must choose their own password first.
-        email = f"e2e-{uuid.uuid4().hex[:8]}@example.com"
-        temporary, chosen = "temporary passphrase 1", "chosen passphrase 22"
+        email = os.environ.get("E2E_USER1_EMAIL") or f"e2e-{uuid.uuid4().hex[:8]}@example.com"
+        temporary = os.environ.get("E2E_USER1_TEMP_PASSWORD") or secrets.token_urlsafe(16)
+        chosen = os.environ.get("E2E_USER1_PASSWORD") or secrets.token_urlsafe(16)
         created = self.client.post(
             "/admin/users", headers=admin, json={"email": email, "temporary_password": temporary}
         )

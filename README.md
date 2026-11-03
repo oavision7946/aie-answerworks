@@ -14,6 +14,7 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - [Quickstart](#quickstart)
   - [Clean up the local run](#clean-up-the-local-run)
   - [Run with Docker Compose](#run-with-docker-compose)
+  - [Credentials used in the examples](#credentials-used-in-the-examples)
 - [Adding users (admin)](#adding-users-admin)
 - [Demo: run the whole system without API keys](#demo-run-the-whole-system-without-api-keys)
 - [Demo: run the whole system with API keys](#demo-run-the-whole-system-with-api-keys)
@@ -105,6 +106,20 @@ docker compose run --rm api python -m scripts.create_admin
 
 Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`. `docker compose down` stops everything and keeps the data (`down -v` deletes it).
 
+### Credentials used in the examples
+
+The examples below read the accounts from shell variables instead of fixed values. Set them once in each terminal you use (choose your own values; passwords are 12 to 128 characters):
+
+```bash
+export ADMIN_EMAIL=<admin email>
+export ADMIN_PASSWORD=<admin password>
+export USER1_EMAIL=<first user's email>
+export USER1_TEMP_PASSWORD=<temporary password the admin gives the user>
+export USER1_PASSWORD=<password the user chooses at first sign-in>
+```
+
+`USER1_PASSWORD` only works after the user has replaced the temporary one (see "See the forced password change" below). Quote a value that contains spaces or shell characters, for example `export ADMIN_PASSWORD='a long passphrase'`.
+
 ## Adding users (admin)
 
 There is no sign-up page: an admin creates each account with a temporary password, and the user must replace it at first sign-in. With the API running and the first admin created (`make create-admin`):
@@ -112,11 +127,11 @@ There is no sign-up page: an admin creates each account with a temporary passwor
 ```bash
 # 1. Sign in as the admin and keep the access token
 TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"<admin password>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 # 2. Create the user (temporary password: 12 to 128 characters; "role" is optional, "user" by default)
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"email":"ana@example.com","temporary_password":"<temporary password>"}'
+  -d "{\"email\":\"$USER1_EMAIL\",\"temporary_password\":\"$USER1_TEMP_PASSWORD\"}"
 
 # 3. List users and their ids
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN"
@@ -129,7 +144,7 @@ curl -s -X PATCH localhost:8000/admin/users/2 \
 
 # or using the email
 ID=$(curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" \
-  | jq -r '.[] | select(.email=="ana@example.com") | .id')
+  | jq -r --arg email "$USER1_EMAIL" '.[] | select(.email==$email) | .id')
 curl -s -X PATCH localhost:8000/admin/users/$ID \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"is_active": false}'
@@ -166,8 +181,8 @@ export ANSWERWORKS_CONFIG_DIR=/tmp/aw-config
 **3. Create the first admin**
 
 ```bash
-BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
-BOOTSTRAP_ADMIN_PASSWORD='admin passphrase 1' \
+BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" \
+BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
 make create-admin         # or run `make create-admin` alone to be prompted
 ```
 
@@ -182,35 +197,33 @@ make run-ui               # terminal 2
 
 **5. Sign in and chat as the admin**
 
-Open http://localhost:8501, sign in as `admin@example.com`, leave the model on "Echo (fake)", and ask something. The answer is `Echo: <your question>` with token usage, and cost shows "n/a" because the fake model has no price.
+Open http://localhost:8501, sign in as `ADMIN_EMAIL`, leave the model on "Echo (fake)", and ask something. The answer is `Echo: <your question>` with token usage, and cost shows "n/a" because the fake model has no price.
 
 **6. Create a regular user (admin API)**
 
 Open http://localhost:8000/docs, call `POST /auth/login` with the admin credentials, copy the `access_token`, click **Authorize** and paste it. Then call `POST /admin/users` with:
 
 ```json
-{"email": "ana@example.com", "temporary_password": "temporary pass 123"}
+{"email": "<USER1_EMAIL>", "temporary_password": "<USER1_TEMP_PASSWORD>"}
 ```
 
 The same from a terminal:
 
 ```bash
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"email":"ana@example.com","temporary_password":"temporary pass 123"}'
+  -d "{\"email\":\"$USER1_EMAIL\",\"temporary_password\":\"$USER1_TEMP_PASSWORD\"}"
 ```
 
 **7. See the forced password change**
 
-In the UI, sign out and sign in as `ana@example.com` with the temporary password. The app asks for a new password before showing the chat. Until it is changed, the API answers 403 to `/models` and `/ask` for that account. After changing it, the chat opens.
+In the UI, sign out and sign in as `USER1_EMAIL` with `USER1_TEMP_PASSWORD`. The app asks for a new password before showing the chat. Until it is changed, the API answers 403 to `/models` and `/ask` for that account. After changing it, the chat opens.
 
 **8. Try the rules**
 
-- Call `GET /admin/users` with ana's token: 403 (admins only). Without a token: 401.
-- As the admin, `PATCH /admin/users/{id}` with `{"is_active": false}` deactivates ana. Signing in or refreshing then fails with 403, and her existing token stops working.
+- Call `GET /admin/users` with the user's token: 403 (admins only). Without a token: 401.
+- As the admin, `PATCH /admin/users/{id}` with `{"is_active": false}` deactivates that user. Signing in or refreshing then fails with 403, and their existing token stops working.
 - `POST /admin/users/{id}/reset-password` sets a new temporary password and forces another change.
 - You cannot deactivate or demote your own account. `POST /auth/register` does not exist (404).
 
@@ -253,8 +266,8 @@ To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: tru
 **2. Create the first admin**
 
 ```bash
-BOOTSTRAP_ADMIN_EMAIL=admin@example.com \
-BOOTSTRAP_ADMIN_PASSWORD='admin passphrase 1' \
+BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" \
+BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
 make create-admin
 ```
 
@@ -273,7 +286,7 @@ make run-ui               # terminal 2
 
 In the browser, open http://localhost:8000/docs:
 
-1. Expand `POST /auth/login`, click **Try it out**, enter `{"email": "admin@example.com", "password": "admin passphrase 1"}` and click **Execute**.
+1. Expand `POST /auth/login`, click **Try it out**, enter `{"email": "<ADMIN_EMAIL>", "password": "<ADMIN_PASSWORD>"}` and click **Execute**.
 2. Copy the value of `access_token` from the response body (the long string, without the quotes).
 3. Click **Authorize** at the top right, paste it into the value box, click **Authorize**, then **Close**.
 4. Expand `GET /models`, click **Try it out**, then **Execute**.
@@ -281,8 +294,6 @@ In the browser, open http://localhost:8000/docs:
 In a terminal:
 
 ```bash
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
   -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 curl -s localhost:8000/models -H "Authorization: Bearer $TOKEN"
@@ -323,8 +334,6 @@ login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/chat -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"message": "My favourite colour is green. Please remember it."}'
@@ -373,12 +382,10 @@ Delete is shown at the end of the next step.
 Create a second user and sign in as them (steps 6 and 7 of the keyless demo, including the forced password change), then:
 
 ```bash
-ANA_EMAIL=ana@example.com
-ANA_PASSWORD='<ana new password>'
-ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
-curl -s localhost:8000/conversations -H "Authorization: Bearer $ANA"                 # []
-curl -s localhost:8000/conversations/$CID -H "Authorization: Bearer $ANA"            # 404, as if it did not exist
-curl -s localhost:8000/chat -H "Authorization: Bearer $ANA" -H 'Content-Type: application/json' \
+USER1_TOKEN=$(login "$USER1_EMAIL" "$USER1_PASSWORD")
+curl -s localhost:8000/conversations -H "Authorization: Bearer $USER1_TOKEN"                 # []
+curl -s localhost:8000/conversations/$CID -H "Authorization: Bearer $USER1_TOKEN"            # 404, as if it did not exist
+curl -s localhost:8000/chat -H "Authorization: Bearer $USER1_TOKEN" -H 'Content-Type: application/json' \
   -d "{\"conversation_id\": \"$CID\", \"message\": \"hi\"}"                     # 404
 curl -s -X DELETE localhost:8000/conversations/$CID -H "Authorization: Bearer $TOKEN" -w '%{http_code}\n'   # 204 (yours)
 ```
@@ -406,8 +413,6 @@ login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/auth/me -H "Authorization: Bearer $TOKEN"
 ```
@@ -454,10 +459,8 @@ Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of
 Sign out and sign in as the user you created. The app first asks for a new password. Then there is no Admin page, **Conversations** is empty (conversations are private), and the admin API refuses the same token:
 
 ```bash
-ANA_EMAIL=ana@example.com
-ANA_PASSWORD='<ana new password>'
-ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
-curl -s localhost:8000/admin/users -H "Authorization: Bearer $ANA"     # 403
+USER1_TOKEN=$(login "$USER1_EMAIL" "$USER1_PASSWORD")
+curl -s localhost:8000/admin/users -H "Authorization: Bearer $USER1_TOKEN"     # 403
 ```
 
 **7. Clean up**
@@ -502,8 +505,6 @@ login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
 ```
@@ -538,8 +539,6 @@ login() {
   curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])'
 }
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD='admin passphrase 1'
 TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 curl -s localhost:8000/rag/options -H "Authorization: Bearer $TOKEN"
 EMB_SMALL=openai-small
@@ -634,23 +633,21 @@ The response has `citations`. Open the conversation again (Conversations, then O
 Sign in as another user (see [Adding users](#adding-users-admin)) and open **Documents**: your upload is not there, and a search finds none of it:
 
 ```bash
-ANA_EMAIL=ana@example.com
-ANA_PASSWORD='<ana new password>'
-ANA=$(login "$ANA_EMAIL" "$ANA_PASSWORD")
-curl -s localhost:8000/documents -H "Authorization: Bearer $ANA"            # []
-curl -s localhost:8000/documents/$DOC -H "Authorization: Bearer $ANA"       # 404
-search_as_ana() {
-  curl -s localhost:8000/rag/search -H "Authorization: Bearer $ANA" -H 'Content-Type: application/json' \
+USER1_TOKEN=$(login "$USER1_EMAIL" "$USER1_PASSWORD")
+curl -s localhost:8000/documents -H "Authorization: Bearer $USER1_TOKEN"            # []
+curl -s localhost:8000/documents/$DOC -H "Authorization: Bearer $USER1_TOKEN"       # 404
+search_as_user1() {
+  curl -s localhost:8000/rag/search -H "Authorization: Bearer $USER1_TOKEN" -H 'Content-Type: application/json' \
     -d '{"query": "penguins Antarctica"}'
 }
-search_as_ana                                                               # no hits
+search_as_user1                                                               # no hits
 ```
 
 Not even an admin can open, search or delete another user's private upload.
 
 **8. Share a corpus (admin)**
 
-In **Admin · Corpora** create a corpus called `handbook`, upload `/tmp/penguins.txt` into it, and grant `ana@example.com`. Back as ana, **Documents** then **Shared corpora** shows it (read-only) and chat can use it. Press **Revoke** and ana's next search finds nothing again.
+In **Admin · Corpora** create a corpus called `handbook`, upload `/tmp/penguins.txt` into it, and grant `USER1_EMAIL`. Back as that user, **Documents** then **Shared corpora** shows it (read-only) and chat can use it. Press **Revoke** and ana's next search finds nothing again.
 
 Same from the API:
 
@@ -658,13 +655,13 @@ Same from the API:
 CORPUS=$(curl -s localhost:8000/corpora -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"name": "handbook", "description": "Demo corpus"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
 curl -s localhost:8000/documents -H "Authorization: Bearer $TOKEN" -F file=@/tmp/penguins.txt -F corpus_id=$CORPUS
-ANA_ID=$(curl -s localhost:8000/auth/me -H "Authorization: Bearer $ANA" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-search_as_ana                                                               # no hits yet
+USER1_ID=$(curl -s localhost:8000/auth/me -H "Authorization: Bearer $USER1_TOKEN" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+search_as_user1                                                               # no hits yet
 curl -s -X POST localhost:8000/corpora/$CORPUS/access -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d "{\"user_id\": \"$ANA_ID\"}"
-search_as_ana                                                               # hits from handbook
-curl -s -X DELETE localhost:8000/corpora/$CORPUS/access/$ANA_ID -H "Authorization: Bearer $TOKEN"
-search_as_ana                                                               # no hits again
+  -H 'Content-Type: application/json' -d "{\"user_id\": \"$USER1_ID\"}"
+search_as_user1                                                               # hits from handbook
+curl -s -X DELETE localhost:8000/corpora/$CORPUS/access/$USER1_ID -H "Authorization: Bearer $TOKEN"
+search_as_user1                                                               # no hits again
 ```
 
 Setting `"is_public": true` (`PATCH /corpora/$CORPUS`) makes a corpus readable by every user instead of by grant.

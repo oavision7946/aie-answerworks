@@ -16,8 +16,10 @@ The script prompts for an email and password. For non-interactive use, set `BOOT
 ```bash
 curl -s -X POST http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email": "admin@example.com", "password": "..."}'
+  -d "{\"email\": \"$ADMIN_EMAIL\", \"password\": \"$ADMIN_PASSWORD\"}"
 ```
+
+The commands read `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `USER1_EMAIL` and `USER1_TEMP_PASSWORD` from the shell; see [Credentials used in the examples](https://github.com/oavision7946/aie-answerworks#credentials-used-in-the-examples) in the README.
 
 Use the returned `access_token` as a bearer token in the calls below, or use the interactive docs at `/docs`.
 
@@ -36,7 +38,7 @@ All routes need an admin access token.
 curl -s -X POST http://localhost:8000/admin/users \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"email": "ana@example.com", "temporary_password": "a-long-temporary-pass"}'
+  -d "{\"email\": \"$USER1_EMAIL\", \"temporary_password\": \"$USER1_TEMP_PASSWORD\"}"
 ```
 
 Temporary passwords follow the same length rules as normal ones (12 to 128 characters). Share the temporary password with the user over a secure channel. On first sign-in they must set their own password before using the app.

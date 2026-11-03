@@ -26,7 +26,7 @@ Passwords are hashed with Argon2. Login takes the same time whether or not the e
 ```bash
 curl -s -X POST http://localhost:8000/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email": "ana@example.com", "password": "..."}'
+  -d "{\"email\": \"$USER1_EMAIL\", \"password\": \"$USER1_PASSWORD\"}"
 ```
 
 Response:
