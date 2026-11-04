@@ -10,7 +10,7 @@ What the system offers to check, from outside or in a dashboard, that its parts 
 | `GET /monitoring/status` | administrators and monitors | The same report as `/admin/status` |
 | `GET /metrics` | holder of `METRICS_TOKEN` | The same numbers in the Prometheus text format |
 
-The web app shows `/admin/status` on **Admin · System**.
+The web app shows `/admin/status` on **Admin · System**. For a hands-on walk through all of this, see the [observability examples](observability_examples.md).
 
 ## Liveness and readiness
 
@@ -72,6 +72,22 @@ scrape_configs:
 | `answerworks_corpus_overdue{corpus}` | gauge | 1 when a scheduled corpus missed its refresh |
 
 Useful alerts: `answerworks_ready == 0` for a few minutes, `answerworks_corpus_overdue == 1`, and a rising ratio of `outcome="error"` to `outcome="ok"` for a provider.
+
+## Request ids and traces
+
+Every API response carries an `X-Request-ID` header. If the caller sends one made of letters, digits, `.`, `_` or `-` (up to 64 characters) it is kept, otherwise a new one is generated. Quote it when reporting a problem: it finds the matching log lines.
+
+The API also takes part in a W3C trace. It continues an incoming `traceparent` header or starts a new trace, and the web app sends one with every call it makes, so a trace begins at the user's action. Log lines look like this:
+
+```
+2026-11-03 16:17:58,006 WARNING app.api.errors [request=ticket-7 trace=4bf92f3577b34da6a3ce929d0e0e4736] HTTP 401 for GET /models: Not authenticated.
+```
+
+- `request` is the request id; `trace` is the trace id. Searching either one finds every line of that request.
+- The scheduler gives each pass an id of the form `scheduler-<12 hex>` and one trace (`scheduler.run`, with a `scheduler.ingest_corpus` span per corpus).
+- Spans carry ids, route templates, status codes and corpus names. They never carry prompts, answers, document text or email addresses.
+- Nothing is exported yet: the ids exist and appear in logs and headers, but no tracing backend receives spans.
+- `LOG_LEVEL` (default `WARNING`; the scheduler defaults to `INFO`) sets how much the application logs. The server's own access log lines do not carry the ids.
 
 ## The other services
 

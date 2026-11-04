@@ -12,12 +12,15 @@ import argparse
 import logging
 import signal
 import threading
+import uuid
 from datetime import UTC, datetime, timedelta
 
+from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session
 
 from app.core.config import load_env
 from app.core.settings import get_settings
+from app.core.tracing import configure_logging, init_tracing, request_context, tracer
 from app.db.models import Corpus
 from app.db.session import get_engine
 from app.services.llm.registry import get_registry
@@ -48,12 +51,15 @@ def run_due(db: Session, ctx: RagContext, now: datetime | None = None) -> list[s
         if not is_due(corpus, now):
             continue
         attempted.append(name)
-        try:
-            result = corpus_service.ingest(db, ctx, corpus.id, None, None)
-        except RagError as exc:
-            logger.error("Scheduled ingestion of %s failed: %s", name, exc.detail)
-            corpus_service.record_failure(db, corpus, exc.detail)
-            continue
+        with tracer().start_as_current_span("scheduler.ingest_corpus") as span:
+            span.set_attribute("answerworks.corpus", name)
+            try:
+                result = corpus_service.ingest(db, ctx, corpus.id, None, None)
+            except RagError as exc:
+                span.set_status(Status(StatusCode.ERROR))
+                logger.error("Scheduled ingestion of %s failed: %s", name, exc.detail)
+                corpus_service.record_failure(db, corpus, exc.detail)
+                continue
         logger.info(
             "Scheduled ingestion of %s: %d indexed, %d failed",
             name,
@@ -63,13 +69,26 @@ def run_due(db: Session, ctx: RagContext, now: datetime | None = None) -> list[s
     return attempted
 
 
+def run_pass(ctx: RagContext) -> list[str]:
+    """One scheduler pass as a single trace. Its id doubles as the request id in the logs."""
+    with (
+        request_context(f"scheduler-{uuid.uuid4().hex[:12]}"),
+        tracer().start_as_current_span("scheduler.run") as span,
+        Session(get_engine()) as db,
+    ):
+        attempted = run_due(db, ctx)
+        span.set_attribute("answerworks.corpora_attempted", len(attempted))
+        return attempted
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Re-ingest shared corpora when they are due.")
     parser.add_argument("--once", action="store_true", help="one pass, then exit")
     parser.add_argument("--poll-seconds", type=float, default=60.0, help="time between passes")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging("INFO")
+    init_tracing("answerworks-scheduler")
     load_env()
     ctx = RagContext(get_settings(), get_registry(), PgVectorStore())
     stop = threading.Event()
@@ -77,8 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(sig, lambda *_: stop.set())
     while not stop.is_set():
         try:
-            with Session(get_engine()) as db:
-                run_due(db, ctx)
+            run_pass(ctx)
         except Exception:  # keep the loop alive; the next pass retries
             logger.exception("Scheduled ingestion pass failed")
         if args.once:

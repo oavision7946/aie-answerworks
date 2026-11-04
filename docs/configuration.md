@@ -19,6 +19,7 @@ Non-secret settings live in YAML under `config/`; secrets live in `.env`. Everyt
 | `ANTHROPIC_WORKSPACE_ID` | API | Only for Anthropic keys that are not scoped to a workspace |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | `create-admin` | Non-interactive first admin |
 | `METRICS_TOKEN` | API | Turns on `GET /metrics` (bearer token). Empty keeps it off |
+| `LOG_LEVEL` | API, scheduler | Application log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Empty uses the default |
 | `ANSWERWORKS_CONFIG_DIR` | API | Use another config directory |
 | `API_BASE_URL` | Web app | Where the API is (default `http://127.0.0.1:8000`) |
 

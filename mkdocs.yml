@@ -10,6 +10,7 @@ nav:
   - Configuration: configuration.md
   - Deployment: deployment.md
   - Observability: observability.md
+  - Observability examples: observability_examples.md
   - API:
       - Overview: api/overview.md
       - Authentication: api/authentication.md

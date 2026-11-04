@@ -25,6 +25,8 @@ dependencies = [
     "openai>=1.50",
     "python-dotenv>=1.0",
     "pypdf>=6.21.4",
+    "opentelemetry-api>=1.45.0",
+    "opentelemetry-sdk>=1.45.0",
 ]
 
 [project.optional-dependencies]

@@ -6,6 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api import health, metrics
 from app.api.errors import register_exception_handlers
+from app.api.middleware import RequestContextMiddleware
 from app.api.v1 import (
     admin_status,
     admin_users,
@@ -18,9 +19,16 @@ from app.api.v1 import (
     monitoring,
     rag,
 )
+from app.core.config import load_env
 from app.core.telemetry import telemetry
+from app.core.tracing import configure_logging, init_tracing
+
+load_env()  # LOG_LEVEL may be set in .env
+configure_logging()
+init_tracing("answerworks-api")
 
 app = FastAPI(title="AnswerWorks API")
+app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(metrics.router)

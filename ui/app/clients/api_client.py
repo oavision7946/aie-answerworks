@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from app import config
+from app import config, tracing
 
 
 class AuthExpired(RuntimeError):
@@ -202,18 +202,25 @@ def fallback_model() -> ModelInfo:
     return ModelInfo(provider="", id=config.FALLBACK_MODEL, label=config.FALLBACK_MODEL)
 
 
+tracing.init_tracing()
+
+
 def _headers(token: str | None) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    """Request headers: the token, and the trace context of the call being made."""
+    return tracing.inject({"Authorization": f"Bearer {token}"} if token else {})
 
 
 def _post_auth(path: str, json_body: dict[str, str], token: str | None = None) -> httpx.Response:
     try:
-        return httpx.post(
-            _url(path),
-            json=json_body,
-            headers=_headers(token),
-            timeout=config.MODELS_TIMEOUT_SECONDS,
-        )
+        with tracing.client_span("POST", path) as span:
+            response = httpx.post(
+                _url(path),
+                json=json_body,
+                headers=_headers(token),
+                timeout=config.MODELS_TIMEOUT_SECONDS,
+            )
+            tracing.record_status(span, response.status_code)
+            return response
     except httpx.HTTPError as exc:
         raise RuntimeError("Could not reach the API. Is it running?") from exc
 
@@ -250,9 +257,11 @@ def change_password(current_password: str, new_password: str, token: str) -> Non
 def get_models(token: str | None = None) -> ModelsResponse:
     """The API's models, or a single fallback entry when the API cannot be reached."""
     try:
-        response = httpx.get(
-            _url("/models"), headers=_headers(token), timeout=config.MODELS_TIMEOUT_SECONDS
-        )
+        with tracing.client_span("GET", "/models") as span:
+            response = httpx.get(
+                _url("/models"), headers=_headers(token), timeout=config.MODELS_TIMEOUT_SECONDS
+            )
+            tracing.record_status(span, response.status_code)
         if response.status_code == 401:
             raise AuthExpired("Your session expired. Please sign in again.")
         response.raise_for_status()
@@ -282,12 +291,14 @@ def _error_detail(response: httpx.Response) -> Any:
 def call_api(
     question: str, model: ModelInfo, force_bad_first_response: bool, token: str | None = None
 ) -> AskResponse:
-    response = httpx.post(
-        _url("/ask"),
-        json=_payload(question, model, force_bad_first_response),
-        headers=_headers(token),
-        timeout=config.ASK_TIMEOUT_SECONDS,
-    )
+    with tracing.client_span("POST", "/ask") as span:
+        response = httpx.post(
+            _url("/ask"),
+            json=_payload(question, model, force_bad_first_response),
+            headers=_headers(token),
+            timeout=config.ASK_TIMEOUT_SECONDS,
+        )
+        tracing.record_status(span, response.status_code)
     if response.status_code == 401:
         raise AuthExpired("Your session expired. Please sign in again.")
     if response.is_error:
@@ -309,33 +320,35 @@ def _read_stream[R: BaseModel](
     answer = ""
     result = None
     event_type = None
-    with httpx.stream(
-        "POST",
-        _url(path),
-        json={**payload, "stream": True},
-        headers=_headers(token),
-        timeout=config.ASK_TIMEOUT_SECONDS,
-    ) as response:
-        if response.status_code == 401:
-            raise AuthExpired("Your session expired. Please sign in again.")
-        if response.is_error:
-            response.read()
-            raise RuntimeError(f"API error ({response.status_code}): {_error_detail(response)}")
-        try:
-            for line in response.iter_lines():
-                if line.startswith("event: "):
-                    event_type = line[7:]
-                elif line.startswith("data: "):
-                    data = json.loads(line[6:])
-                    if event_type == "delta":
-                        answer += data["content"]
-                        render_answer(answer)
-                    elif event_type == "done":
-                        result = result_model.model_validate(data)
-                    elif event_type == "error":
-                        raise RuntimeError(data.get("detail", "The streaming request failed."))
-        except (ValueError, ValidationError) as exc:
-            raise RuntimeError("The API returned an unexpected streaming response.") from exc
+    with tracing.client_span("POST", path) as span:
+        with httpx.stream(
+            "POST",
+            _url(path),
+            json={**payload, "stream": True},
+            headers=_headers(token),
+            timeout=config.ASK_TIMEOUT_SECONDS,
+        ) as response:
+            tracing.record_status(span, response.status_code)
+            if response.status_code == 401:
+                raise AuthExpired("Your session expired. Please sign in again.")
+            if response.is_error:
+                response.read()
+                raise RuntimeError(f"API error ({response.status_code}): {_error_detail(response)}")
+            try:
+                for line in response.iter_lines():
+                    if line.startswith("event: "):
+                        event_type = line[7:]
+                    elif line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        if event_type == "delta":
+                            answer += data["content"]
+                            render_answer(answer)
+                        elif event_type == "done":
+                            result = result_model.model_validate(data)
+                        elif event_type == "error":
+                            raise RuntimeError(data.get("detail", "The streaming request failed."))
+            except (ValueError, ValidationError) as exc:
+                raise RuntimeError("The API returned an unexpected streaming response.") from exc
     if result is None:
         raise RuntimeError("The API stream ended before completion metadata was returned.")
     return result
@@ -366,15 +379,17 @@ def _send(
 ) -> httpx.Response:
     """One authenticated call. 401 -> AuthExpired, other errors -> RuntimeError(detail)."""
     try:
-        response = httpx.request(
-            method,
-            _url(path),
-            json=json_body,
-            files=files,
-            data=form,
-            headers=_headers(token),
-            timeout=config.ASK_TIMEOUT_SECONDS,
-        )
+        with tracing.client_span(method, path) as span:
+            response = httpx.request(
+                method,
+                _url(path),
+                json=json_body,
+                files=files,
+                data=form,
+                headers=_headers(token),
+                timeout=config.ASK_TIMEOUT_SECONDS,
+            )
+            tracing.record_status(span, response.status_code)
     except httpx.HTTPError as exc:
         raise RuntimeError("Could not reach the API. Is it running?") from exc
     if response.status_code == 401:

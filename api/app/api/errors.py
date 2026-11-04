@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.middleware import REQUEST_ID_HEADER, request_ids
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,10 +40,13 @@ async def handle_http_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled API error for %s %s", request.method, request.url.path)
+    # This handler runs outside the request middleware, so take the ids from the request scope.
+    ids = request_ids(request.scope)
+    logger.exception("Unhandled API error for %s %s", request.method, request.url.path, extra=ids)
     return JSONResponse(
         status_code=500,
         content={"detail": "The request could not be completed. Please try again."},
+        headers={REQUEST_ID_HEADER: ids["request_id"]},
     )
 
 

@@ -1,13 +1,16 @@
+import logging
 import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+from opentelemetry.trace import StatusCode
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.core import tracing
 from app.core.settings import ChunkingConfig, CorporaConfig, EmbeddingModelConfig, load_settings
 from app.db.base import Base
 from app.db.models import Corpus
@@ -17,6 +20,7 @@ from app.services.rag.vector_store.pgvector import PgVectorStore
 from scripts import scheduler
 from tests.helpers import make_registry
 from tests.rag_helpers import PENGUINS
+from tests.tracing_helpers import exporter
 
 NOW = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
 
@@ -111,6 +115,52 @@ class TestRunDue(unittest.TestCase):
         self.assertEqual(attempted, ["hourly", "manual"])
         error = self.info("hourly")[1]
         self.assertIn("not available on this server", error)
+
+    def run_pass(self):
+        with patch.object(scheduler, "get_engine", return_value=self.engine):
+            return scheduler.run_pass(self.ctx)
+
+    def test_a_pass_is_one_trace_with_a_span_per_corpus_ingested(self):
+        exporter.clear()
+
+        attempted = self.run_pass()
+
+        spans = {s.name: s for s in exporter.get_finished_spans()}
+        run, ingest = spans["scheduler.run"], spans["scheduler.ingest_corpus"]
+        self.assertEqual(attempted, ["hourly"])
+        self.assertIsNone(run.parent)
+        self.assertEqual(ingest.parent.span_id, run.context.span_id)
+        self.assertEqual(ingest.context.trace_id, run.context.trace_id)
+        self.assertEqual(ingest.attributes["answerworks.corpus"], "hourly")
+        self.assertEqual(run.attributes["answerworks.corpora_attempted"], 1)
+        self.assertRegex(run.attributes["answerworks.request_id"], r"^scheduler-[0-9a-f]{12}$")
+        self.assertEqual(tracing.current_request_id(), "-")  # the pass left no context behind
+
+    def test_a_failed_ingestion_marks_its_span(self):
+        self.settings.rag.default_embedding = "offline"
+        exporter.clear()
+
+        self.run_pass()
+
+        ingest = next(
+            s for s in exporter.get_finished_spans() if s.name == "scheduler.ingest_corpus"
+        )
+        self.assertEqual(ingest.status.status_code, StatusCode.ERROR)
+
+    def test_log_lines_of_a_pass_carry_its_ids(self):
+        scheduler_log = logging.getLogger("scheduler")
+        correlation = tracing.CorrelationFilter()
+        scheduler_log.addFilter(correlation)
+        self.addCleanup(scheduler_log.removeFilter, correlation)
+        exporter.clear()
+
+        with self.assertLogs("scheduler", level="INFO") as captured:
+            self.run_pass()
+
+        run = next(s for s in exporter.get_finished_spans() if s.name == "scheduler.run")
+        record = captured.records[0]
+        self.assertEqual(record.request_id, run.attributes["answerworks.request_id"])
+        self.assertEqual(record.trace_id, f"{run.context.trace_id:032x}")
 
     def test_main_runs_one_pass_with_once_and_survives_a_failing_pass(self):
         patches = (
