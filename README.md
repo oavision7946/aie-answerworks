@@ -17,8 +17,7 @@ FastAPI backend · Streamlit frontend · PostgreSQL + pgvector · configuration 
 - [Examples](#examples)
   - [Credentials used in the examples](#credentials-used-in-the-examples)
   - [Adding users (admin)](#adding-users-admin)
-  - [Example: run the whole system without API keys](#example-run-the-whole-system-without-api-keys)
-  - [Example: run the whole system with API keys](#example-run-the-whole-system-with-api-keys)
+  - [Example: Run the whole system with or without provider API keys](#example-run-the-whole-system-with-or-without-provider-api-keys)
   - [Example: saved conversations (API)](#example-saved-conversations-api)
   - [Example: the web app (chat, conversations, admin)](#example-the-web-app-chat-conversations-admin)
   - [Example: your documents (RAG)](#example-your-documents-rag)
@@ -83,7 +82,7 @@ Open http://localhost:8501 and sign in with the admin account you just created. 
 
 If something is already listening on port 5432, use another port: `make db-up DB_PORT=55432`, then put the `DATABASE_URL` it prints into `.env`. `make db-down` stops the database (data is kept); `make db-destroy` deletes the data.
 
-### Clean up the local run
+#### Clean up the local run
 
 Stop `make run-api` and `make run-ui` with Ctrl+C in their terminals, then:
 
@@ -105,7 +104,18 @@ docker compose up --build -d
 docker compose run --rm api python -m scripts.create_admin
 ```
 
-Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`. `docker compose down` stops everything and keeps the data (`down -v` deletes it).
+Open http://localhost:8501 (web app) or http://localhost:8000/docs (API). Migrations run when the API starts, the database lives in a Docker volume, and `config/` is mounted so YAML edits apply after `docker compose restart api`. Ports, config directory and database credentials can be changed with variables; see [docs/deployment.md](docs/deployment.md). Corpora with `refresh_minutes` are refreshed by the optional scheduler service: `docker compose --profile scheduler up -d`.
+
+#### Clean up the Docker Compose run
+
+Stop the containers, and remove their data and images if you no longer need them:
+
+```bash
+docker compose down                # stop everything and keep the data
+docker compose down -v             # stop everything and delete the data
+docker compose down -v --rmi local # also remove the images built for this project
+docker builder prune               # optional: clear the build cache
+```
 
 ## Examples
 
@@ -155,24 +165,37 @@ curl -s -X PATCH localhost:8000/admin/users/$ID \
 
 Give the temporary password to the user over a secure channel. The same calls work from the interactive docs at http://localhost:8000/docs (sign in with `POST /auth/login`, click **Authorize**). More in the [admin guide](docs/admin-guide.md).
 
-### Example: run the whole system without API keys
+### Example: Run the whole system with or without provider API keys
 
-This walks through login, the forced password change, and the admin API using the built-in fake provider, which echoes your question, so it costs nothing and needs no provider keys. Nothing here edits tracked files.
+This walks through login, the forced password change and the admin API. Run it one of two ways:
+
+- **Keyless case:** a built-in fake provider echoes your question, so it costs nothing and needs no provider keys.
+- **Provider-keys case:** answers come from real models. Requests are billed by the provider, so keep questions short. The Anthropic, OpenAI and local adapters are tested against mocked HTTP only; this example is how you check them against the real services.
+
+Steps 2 and 5 apply to one case only and say which. Nothing here edits tracked files.
 
 **1. Prepare**
 
 ```bash
 cp .env.example .env
-# Edit .env: set JWT_SECRET (e.g. the output of `openssl rand -hex 32`).
-# If port 5432 is taken, also use DB_PORT=55432 below and set
-# DATABASE_URL=postgresql+psycopg://answerworks:answerworks@localhost:55432/answerworks
+```
 
+Edit `.env`:
+
+- `JWT_SECRET`: a random string of at least 16 characters (`openssl rand -hex 32`).
+- If port 5432 is taken, `DATABASE_URL=postgresql+psycopg://answerworks:answerworks@localhost:55432/answerworks`, and add `DB_PORT=55432` to the `make db-up` command.
+- Provider-keys case only: the key for each provider you want, `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`. A provider without a key is skipped with a warning in the API log, so you only need one. With only an OpenAI key the default falls back to OpenAI automatically.
+  - `ANTHROPIC_WORKSPACE_ID`: only if Anthropic answers with `This API key is not scoped to a workspace ... must include the anthropic-workspace-id header`. Put the ID of the workspace to use here (or create a key scoped to a workspace instead). Leave it empty otherwise.
+
+```bash
 make install
-make db-up                # add DB_PORT=55432 if needed
+make db-up                    # add DB_PORT=55432 if needed
 make migrate
 ```
 
-**2. Switch to the fake provider in a private copy of the config**
+Provider-keys case only: to use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: true` for `local` in `config/providers.yaml`, adjust its `base_url` and model ids, and make sure the server is running. To change which models are offered or their prices, edit the lists in the same file. If you ran the keyless case before in this terminal, run `unset ANSWERWORKS_CONFIG_DIR` so the real config applies.
+
+**2. Keyless case only: switch to the fake provider in a private copy of the config**
 
 ```bash
 cp -r config /tmp/aw-config
@@ -194,96 +217,11 @@ Passwords must be 12 to 128 characters. The bootstrap admin does not have to cha
 **4. Start API and UI services**
 
 ```bash
-make run-api              # terminal 1 (keep ANSWERWORKS_CONFIG_DIR exported)
+make run-api              # terminal 1 (keyless case: keep ANSWERWORKS_CONFIG_DIR exported)
 make run-ui               # terminal 2
 ```
 
-**5. Sign in and chat as the admin**
-
-Open http://localhost:8501, sign in as `ADMIN_EMAIL`, leave the model on "Echo (fake)", and ask something. The answer is `Echo: <your question>` with token usage, and cost shows "n/a" because the fake model has no price.
-
-**6. Create a regular user (admin API)**
-
-Open http://localhost:8000/docs, call `POST /auth/login` with the admin credentials, copy the `access_token`, click **Authorize** and paste it. Then call `POST /admin/users` with:
-
-```json
-{"email": "<USER1_EMAIL>", "temporary_password": "<USER1_TEMP_PASSWORD>"}
-```
-
-The same from a terminal:
-
-```bash
-TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$USER1_EMAIL\",\"temporary_password\":\"$USER1_TEMP_PASSWORD\"}"
-```
-
-**7. See the forced password change**
-
-In the UI, sign out and sign in as `USER1_EMAIL` with `USER1_TEMP_PASSWORD`. The app asks for a new password before showing the chat. Until it is changed, the API answers 403 to `/models` and `/ask` for that account. After changing it, the chat opens.
-
-**8. Try the rules**
-
-- Call `GET /admin/users` with the user's token: 403 (admins only). Without a token: 401.
-- As the admin, `PATCH /admin/users/{id}` with `{"is_active": false}` deactivates that user. Signing in or refreshing then fails with 403, and their existing token stops working.
-- `POST /admin/users/{id}/reset-password` sets a new temporary password and forces another change.
-- You cannot deactivate or demote your own account. `POST /auth/register` does not exist (404).
-
-**9. Clean up**
-
-```bash
-make db-down              # keeps the data; `make db-destroy` deletes it
-rm -rf /tmp/aw-config
-unset ANSWERWORKS_CONFIG_DIR
-```
-
-To use real providers instead, see the next section.
-
-### Example: run the whole system with API keys
-
-Same flow as the example above, but answers come from real models. Requests are billed by the provider, so keep questions short. The Anthropic, OpenAI and local adapters are tested against mocked HTTP only; this demo is how you check them against the real services.
-
-**1. Prepare**
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-
-- `JWT_SECRET`: a random string of at least 16 characters (`openssl rand -hex 32`).
-- The key for each provider you want: `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`. A provider without a key is skipped with a warning in the API log, so you only need one. With only an OpenAI key the default falls back to OpenAI automatically.
-- `ANTHROPIC_WORKSPACE_ID`: only if Anthropic answers with `This API key is not scoped to a workspace ... must include the anthropic-workspace-id header`. Put the ID of the workspace to use here (or create a key scoped to a workspace instead). Leave it empty otherwise.
-- If port 5432 is taken, `DATABASE_URL=postgresql+psycopg://answerworks:answerworks@localhost:55432/answerworks`, and add `DB_PORT=55432` to the `make db-up` command.
-
-```bash
-make install
-make db-up
-make migrate
-unset ANSWERWORKS_CONFIG_DIR     # in case the fake-provider config from the other example is still set
-```
-
-To use a local model server (Ollama, vLLM, llama.cpp) as well, set `enabled: true` for `local` in `config/providers.yaml`, adjust its `base_url` and model ids, and make sure the server is running. To change which models are offered or their prices, edit the lists in the same file.
-
-**2. Create the first admin**
-
-```bash
-BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" \
-BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-make create-admin
-```
-
-Passwords must be 12 to 128 characters. The bootstrap admin does not have to change their password. Running `make create-admin` again fails and changes nothing, because an admin already exists.
-
-**3. Start API and UI services**
-
-```bash
-make run-api              # terminal 1
-make run-ui               # terminal 2
-```
-
-**4. Check which providers loaded**
+**5. Provider-keys case only: check which providers loaded**
 
 `/models` needs a token, so sign in first to get an `access_token`. Either use the interactive docs or a terminal.
 
@@ -304,21 +242,61 @@ curl -s localhost:8000/models -H "Authorization: Bearer $TOKEN"
 
 The access token is valid for 15 minutes (`auth.access_token_ttl_minutes` in `config/app.yaml`); after that, log in again for a new one. Only models of providers that loaded are listed. If one is missing, look in the `make run-api` output for a warning naming the environment variable that is not set.
 
-**5. Chat**
+**6. Sign in and chat as the admin**
 
-Open http://localhost:8501 and sign in. Pick a model in the sidebar, ask a question, and compare:
+Open http://localhost:8501 and sign in as `ADMIN_EMAIL`. Pick a model in the sidebar ("Echo (fake)" in the keyless case) and ask something.
 
-- the answer from different providers and models (use the same question);
-- streaming: toggle **Stream responses** to see the answer arrive in pieces;
-- tokens and estimated cost under each answer. Cost shows "n/a" for models with no `pricing` entry in `config/providers.yaml`.
+- Keyless case: the answer is `Echo: <your question>` with token usage, and cost shows "n/a" because the fake model has no price.
+- Provider-keys case, compare:
+  - the answer from different providers and models (use the same question);
+  - streaming: toggle **Stream responses** to see the answer arrive in pieces;
+  - tokens and estimated cost under each answer. Cost shows "n/a" for models with no `pricing` entry in `config/providers.yaml`.
 
-**6. Accounts and rules**
+**7. Create a regular user (admin API)**
 
-Create a second user, see the forced password change and try the admin rules exactly as in steps 6 to 8 of the keyless example. A user's token works with every configured provider.
+Open http://localhost:8000/docs, call `POST /auth/login` with the admin credentials, copy the `access_token`, click **Authorize** and paste it. Then call `POST /admin/users` with:
 
-**7. Clean up**
+```json
+{"email": "<USER1_EMAIL>", "temporary_password": "<USER1_TEMP_PASSWORD>"}
+```
 
-Stop both services, then `make db-down` (or `make db-destroy` to delete the data) and `make clean` to remove Python and tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.coverage`). Remove your keys from `.env` if this is a shared machine.
+The same from a terminal:
+
+```bash
+TOKEN=$(curl -s localhost:8000/auth/login -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$USER1_EMAIL\",\"temporary_password\":\"$USER1_TEMP_PASSWORD\"}"
+```
+
+**8. See the forced password change**
+
+In the UI, sign out and sign in as `USER1_EMAIL` with `USER1_TEMP_PASSWORD`. The app asks for a new password before showing the chat. Until it is changed, the API answers 403 to `/models` and `/ask` for that account. After changing it, the chat opens.
+
+**9. Try the rules**
+
+- Call `GET /admin/users` with the user's token: 403 (admins only). Without a token: 401.
+- As the admin, `PATCH /admin/users/{id}` with `{"is_active": false}` deactivates that user. Signing in or refreshing then fails with 403, and their existing token stops working.
+- `POST /admin/users/{id}/reset-password` sets a new temporary password and forces another change.
+- You cannot deactivate or demote your own account. `POST /auth/register` does not exist (404).
+- Provider-keys case: the regular user's token works with every configured provider.
+
+**10. Clean up**
+
+Stop both services with Ctrl+C, then:
+
+```bash
+make db-down              # keeps the data; `make db-destroy` deletes it
+make clean                # removes Python and tool caches (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.coverage`)
+```
+
+- Provider-keys case: remove your keys from `.env` if this is a shared machine.
+- Keyless case: remove the private config and unset the variable:
+
+  ```bash
+  rm -rf /tmp/aw-config
+  unset ANSWERWORKS_CONFIG_DIR
+  ```
 
 ### Example: saved conversations (API)
 
@@ -326,7 +304,7 @@ Builds on the demos above: the same running system, now with conversations that 
 
 **1. Start from a running system**
 
-Follow steps 1 to 4 of the keyless example (or 1 to 3 of the example with keys) above (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
+Follow steps 1 to 4 of the [first example](#example-run-the-whole-system-with-or-without-provider-api-keys) above, in either case (database, `make migrate`, first admin, `make run-api`). If you ran that demo before this feature existed, run `make migrate` again to add the conversation tables and restart `make run-api`.
 
 **2. Sign in and send a first message**
 
@@ -382,7 +360,7 @@ Delete is shown at the end of the next step.
 
 **7. See that conversations are private**
 
-Create a second user and sign in as them (steps 6 and 7 of the keyless example, including the forced password change), then:
+Create a second user and sign in as them (steps 7 and 8 of the [first example](#example-run-the-whole-system-with-or-without-provider-api-keys), including the forced password change), then:
 
 ```bash
 USER1_TOKEN=$(login "$USER1_EMAIL" "$USER1_PASSWORD")
@@ -401,7 +379,7 @@ Same as the demos above. Deleting a conversation also deletes its messages; stop
 
 ### Example: the web app (chat, conversations, admin)
 
-The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 4 of the keyless example (or 1 to 3 of the example with keys) above: database, `make migrate`, first admin, `make run-api`, then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
+The same system seen through the browser. Every UI step has an "Same from the API" line, so you can see what the page does behind the scenes. Start from a running system: steps 1 to 4 of the [first example](#example-run-the-whole-system-with-or-without-provider-api-keys) above, in either case: database, `make migrate`, first admin, `make run-api`, then `make run-ui` and open http://localhost:8501. If you set up the system before the UI had these pages, nothing needs migrating.
 
 **1. Sign in and find your way around**
 
@@ -455,7 +433,7 @@ curl -s localhost:8000/ask -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 
 Open **Admin · Users**. The table lists every account with its role, whether it is active, and whether a password change is pending. Under **Add a user**, enter an email, a temporary password (12 to 128 characters) and a role, then **Create user**. Under **Manage a user**, pick someone to change their role, deactivate them, or set a new temporary password. Try deactivating yourself: the API refuses, and the page shows its message.
 
-Same from the API: see [Adding users (admin)](#adding-users-admin) and step 8 of the keyless example.
+Same from the API: see [Adding users (admin)](#adding-users-admin) and step 9 of the [first example](#example-run-the-whole-system-with-or-without-provider-api-keys).
 
 **6. See it as a regular user**
 
@@ -523,7 +501,7 @@ EMB_LARGE=fake-large
 
 **1. Prepare (with keys)**
 
-Start from the [example with API keys](#example-run-the-whole-system-with-api-keys) (steps 1 to 4: `.env`, database, `make migrate`, first admin, `make run-api`, `make run-ui`). Do not use the private config of the keyless example; run `unset ANSWERWORKS_CONFIG_DIR` so the real `config/rag.yaml` applies. That file defines the embedding models and splitters:
+Start from the [first example](#example-run-the-whole-system-with-or-without-provider-api-keys), provider-keys case (steps 1, 3 and 4: `.env`, database, `make migrate`, first admin, `make run-api`, `make run-ui`). Do not use the private config of the keyless case; run `unset ANSWERWORKS_CONFIG_DIR` so the real `config/rag.yaml` applies. That file defines the embedding models and splitters:
 
 | Name | Provider | Model | Needs |
 | --- | --- | --- | --- |
@@ -550,7 +528,7 @@ EMB_LARGE=openai-large
 
 Check that the models you use show `"available": true`. A model whose key is missing is `false` and the API log names the variable to set. With `local-nomic`, set `EMB_LARGE=local-nomic` instead.
 
-Differences from the keyless example to expect in the steps below:
+Differences from the keyless setup to expect in the steps below:
 
 - The splitters are the ones in `config/rag.yaml` (`recursive` 800, `sentence` 500, `fixed` 1000 characters). The demo file is about 270 characters, so each index holds a single chunk and the chunk counts are equal; the index table still shows the different models and splitters. Use a longer file to see the counts differ.
 - Real embeddings match meaning, not just shared words, so a question such as "what do penguins eat" ranks the penguin passage first even if the wording differs, and scores are cosine similarities you can compare between indexes of the same model only.

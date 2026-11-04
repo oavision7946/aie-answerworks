@@ -39,6 +39,10 @@ Inside a container, `localhost` is the container itself. For Ollama or another s
 ```bash
 docker compose down               # keeps the database
 docker compose down -v            # also deletes the database volume
+docker compose down -v --rmi local  # and removes the images built for this project
+docker builder prune              # optional: clears the build cache
 ```
+
+Compose writes nothing into the repository folder (`config/` is mounted read-only), so `make clean` is only for caches left by running tests or the API directly on the host.
 
 The setup has no TLS and the web app serves plain HTTP. Put a reverse proxy with HTTPS in front of both ports before exposing them beyond your own network.

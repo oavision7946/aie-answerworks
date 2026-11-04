@@ -8,7 +8,7 @@ You will need about 20 minutes and a terminal. No model keys are required.
 
 ## 0. Set up
 
-Start the system as in steps 1 to 4 of the [keyless example](https://github.com/oavision7946/aie-answerworks#example-run-the-whole-system-without-api-keys) (database, migrations, the fake provider, the first admin, `make run-api`). Then, in a second terminal:
+Start the system as in steps 1 to 4 of the [first example](https://github.com/oavision7946/aie-answerworks#example-run-the-whole-system-with-or-without-provider-api-keys), keyless case (database, migrations, the fake provider, the first admin, `make run-api`). Then, in a second terminal:
 
 1. Add a metrics token to `.env` and restart `make run-api`:
 
