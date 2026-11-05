@@ -9,7 +9,7 @@ PostgreSQL, managed with Alembic (`make migrate`). A test checks that the models
 | id | UUID, primary key |
 | email | Unique, stored lowercase |
 | password_hash | Argon2 |
-| role | `admin`, `monitor` or `user` |
+| role | `admin`, `monitor` or `user` (one per account; each includes the abilities of the ones below it) |
 | is_active | Deactivated accounts cannot sign in |
 | must_change_password | Blocks every route except change-password and `/auth/me` |
 | created_at | |

@@ -1,6 +1,6 @@
 # Authorization
 
-Every account has one role, `admin`, `monitor` or `user`, and an `is_active` flag. A `monitor` is a regular user who may also read the monitoring views; it has no admin rights.
+Every account has one role, `admin`, `monitor` or `user`, and an `is_active` flag. Roles stack: `monitor` can do everything a `user` can and also read the monitoring views, and `admin` can do everything a `monitor` can and also manage users and corpora. An account holds one role, so changing a user to `monitor` keeps all their regular abilities.
 
 ## Dependencies
 

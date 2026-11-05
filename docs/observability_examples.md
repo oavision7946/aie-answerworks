@@ -51,11 +51,20 @@ The first answers "is the process running?" and never touches the database. The 
 
 ## 2. Give someone read access to monitoring
 
-Create an account with the `monitor` role. A monitor is a regular user who can also read the monitoring status; it has no admin rights.
+Create an account with the `monitor` role. Roles stack, and an account has one role: a monitor can do everything a regular user can (chat, its own documents) and also read the monitoring status, but has no admin rights. Setting the role to `monitor` therefore takes nothing away from the account.
 
 ```bash
 curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d "{\"email\":\"$USER1_EMAIL\",\"temporary_password\":\"$USER1_TEMP_PASSWORD\",\"role\":\"monitor\"}"
+```
+
+If this answers `A user with this email already exists.`, the account was created earlier (for example in another example). Creating it again changes nothing, so change its role instead, and skip the password change below if that account has already chosen its own password (then `USER1_PASSWORD` is that password):
+
+```bash
+ID=$(curl -s localhost:8000/admin/users -H "Authorization: Bearer $TOKEN" \
+  | jq -r --arg email "$USER1_EMAIL" '.[] | select(.email==$email) | .id')
+curl -s -X PATCH localhost:8000/admin/users/$ID -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"role": "monitor"}'
 ```
 
 Every new account must replace its temporary password before it can do anything else. You should see that for yourself:
