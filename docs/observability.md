@@ -107,7 +107,9 @@ tracing:
   sample_ratio: 1.0                      # share of new traces kept; a caller's decision is respected
 ```
 
-Any OpenTelemetry-compatible collector or backend that accepts OTLP over HTTP can receive them. If it needs credentials, set `OTEL_EXPORTER_OTLP_HEADERS` in `.env` (for example `Authorization=Bearer <token>`). Without the file, or with `enabled: false`, nothing is exported and no exporter is loaded. The web app exports its own spans when `TRACING_ENABLED=true` is set (with `OTLP_ENDPOINT` for the address); both services share trace ids either way.
+Any OpenTelemetry-compatible collector or backend that accepts OTLP over HTTP can receive them. If it needs credentials, set `OTEL_EXPORTER_OTLP_HEADERS` in `.env` (for example `Authorization=Bearer <token>`). Without the file, or with `enabled: false`, nothing is exported and no exporter is loaded. `TRACING_ENABLED` and `OTLP_ENDPOINT` in the environment override the file for the API, the scheduler and the web app, which is how the Compose file points them at its collector. The web app has no YAML file and reads only these two variables. All services share trace ids either way.
+
+Requests to `/health`, `/health/ready` and `/metrics` that arrive without a trace of their own are not exported, so probes and scrapes do not bury real requests. Their ids still appear in logs.
 
 One chat request is one trace:
 
@@ -130,6 +132,49 @@ What is exported, and what is not:
 - They never carry prompts, answers, document text, email addresses, passwords or tokens. SQL spans show the statement with placeholders, not the values bound to it.
 - Everything is filtered again on the way out: query strings, request and response headers and exception messages and stack traces are removed, status descriptions are dropped (a failure keeps its exception type only) and long values are clipped.
 - Failures appear as a span marked as an error with `error.type` set to the exception class, never its text.
+
+## Monitoring stack (Docker Compose)
+
+The `monitoring` profile adds dashboards, alerts and trace search. It is off unless you select it:
+
+```bash
+# in .env: METRICS_TOKEN=<long random string>   TRACING_ENABLED=true
+docker compose --profile monitoring up -d
+```
+
+Open Grafana at http://localhost:3000 and sign in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` from `.env` (the default password is `admin`: change it). Every monitoring port is published on `127.0.0.1` only, and anonymous access is off.
+
+| Service | Role | Published |
+|---|---|---|
+| `otel-collector` | Receives spans over OTLP and forwards them to Tempo | `127.0.0.1:4318` (HTTP), `127.0.0.1:4317` (gRPC) |
+| `tempo` | Stores traces (7 days) | no |
+| `prometheus` | Scrapes metrics and evaluates the alert rules (15 days) | `127.0.0.1:9090` |
+| `blackbox` | Probes `/health`, `/health/ready` and the web app's health URL | no |
+| `postgres-exporter` | Database metrics | no |
+| `grafana` | Dashboards, provisioned from `monitoring/grafana` | `127.0.0.1:3000` |
+
+Prometheus scrapes the API's `/metrics` with `METRICS_TOKEN` (without it the API target is down and the `ApiDown` alert fires), the probes, PostgreSQL, Tempo, and two optional targets on the host: the model server's `/metrics` (`VLLM_METRICS_TARGET`, default `host.docker.internal:8001`) and the GPU exporter (`GPU_EXPORTER_TARGET`, default `host.docker.internal:9835`). A missing optional target shows as down on the dashboards and raises no alert.
+
+Dashboards (folder AnswerWorks):
+
+- **Health:** ready and up per service, readiness checks, providers, probe time, database, corpus freshness and ingest errors.
+- **Latency:** request rate and 5xx ratio, p50/p95/p99 by route and by stage, time to first token, model call time, tokens per second.
+- **GPU and model server:** GPU utilization, temperature, power and clocks from the exporter; queue, running and waiting requests, KV cache, prefill and decode time from the model server.
+- **Request traces:** find a trace by the `X-Request-ID` the API returned, open it as a waterfall (browser call, API, SQL, vector search, embedding, model call), and list slow chats and errors.
+
+Alert rules live in `monitoring/alerts.yml` and show in Prometheus and in Grafana's Alert rules page. They cover a down or not-ready API, failing readiness checks, the web app and database, a 5xx ratio above 5%, slow completions and first tokens, provider error ratios, overdue or failing corpora, a growing model queue, a full KV cache, a hot or full GPU and a failing GPU exporter. No notifications are sent: add Alertmanager or Grafana contact points for that. `make test-alerts` runs `monitoring/alerts_test.yml` against the rules (it needs Docker).
+
+**GPU exporter.** The model server usually runs outside Compose, so the GPU is read on the host:
+
+```bash
+cd api && uv run python -m scripts.gpu_exporter --host 0.0.0.0 --port 9835
+```
+
+It parses `nvidia-smi` and serves hardware numbers only. Anything the driver does not report is left out: on unified-memory machines such as the DGX Spark there are no memory figures, only utilization, clocks, temperature and power. `--host 0.0.0.0` lets the Prometheus container reach it; on a shared network, bind the Docker bridge address instead.
+
+**Model server traces.** A vLLM server started with `--otlp-traces-endpoint http://localhost:4317` (OTLP over gRPC to the collector's published port) sends its own spans. The API already forwards `traceparent` to `openai_compatible` providers, so those spans can join the request's trace. The dashboards do not depend on it: queue and prefill/decode times come from the server's metrics.
+
+**Traces without Compose.** Run the collector and Tempo from the profile (`docker compose --profile monitoring up -d otel-collector tempo grafana prometheus`) and start the API on the host with `TRACING_ENABLED=true`; the default endpoint `http://localhost:4318` reaches the published collector port. Inside Compose, `localhost` is the container itself, which is why the Compose file sets `OTLP_ENDPOINT=http://otel-collector:4318` for its services.
 
 ## The other services
 

@@ -2,7 +2,7 @@
 
 import os
 from functools import lru_cache
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -300,10 +300,22 @@ class Settings(BaseModel):
 
 
 def load_monitoring() -> MonitoringConfig:
-    """config/monitoring.yaml; a missing file means everything off."""
-    if not (config_dir() / "monitoring.yaml").exists():
-        return MonitoringConfig()
-    return MonitoringConfig.model_validate(load_yaml("monitoring.yaml"))
+    """config/monitoring.yaml (a missing file means everything off).
+
+    The environment variables TRACING_ENABLED and OTLP_ENDPOINT, when set and not empty, win over
+    the file, so a container can point at its collector without a separate config.
+    """
+    data: dict[str, Any] = {}
+    if (config_dir() / "monitoring.yaml").exists():
+        data = load_yaml("monitoring.yaml") or {}
+    tracing = dict(data.get("tracing") or {})
+    enabled = os.getenv("TRACING_ENABLED", "").strip().lower()
+    if enabled:
+        tracing["enabled"] = enabled in ("1", "true", "yes")
+    endpoint = os.getenv("OTLP_ENDPOINT", "").strip()
+    if endpoint:
+        tracing["otlp_endpoint"] = endpoint
+    return MonitoringConfig.model_validate({**data, "tracing": tracing})
 
 
 def load_settings() -> Settings:

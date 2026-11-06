@@ -5,7 +5,8 @@
 #   docker compose run --rm api python -m scripts.create_admin     # first admin
 #
 # Web app http://localhost:8501, API docs http://localhost:8000/docs.
-# CONFIG_DIR picks another config directory; the ports can be moved with the *_PORT variables.
+# Monitoring (metrics, traces, dashboards) is optional: docker compose --profile monitoring up -d
+# (see docs/observability.md). CONFIG_DIR picks another config directory; the ports can be moved with the *_PORT variables.
 
 services:
   db:
@@ -32,6 +33,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}
       ANSWERWORKS_CONFIG_DIR: /srv/answerworks/config
+      OTLP_ENDPOINT: http://otel-collector:4318   # used when TRACING_ENABLED=true in .env
       # Ollama or another model server on the host: use http://host.docker.internal:<port>
       # as base_url in providers.yaml (localhost would be the container itself).
     extra_hosts:
@@ -59,6 +61,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}
       ANSWERWORKS_CONFIG_DIR: /srv/answerworks/config
+      OTLP_ENDPOINT: http://otel-collector:4318
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -73,11 +76,103 @@ services:
       dockerfile: ui/Dockerfile
     environment:
       API_BASE_URL: http://api:8000
+      TRACING_ENABLED: ${TRACING_ENABLED:-}
+      OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - "${UI_PORT:-8501}:8501"
     depends_on:
       api:
         condition: service_healthy
 
+  # ---- Monitoring: off unless the profile is selected. Set METRICS_TOKEN (and, to see traces,
+  # TRACING_ENABLED=true) in .env. Everything is published on 127.0.0.1 only.
+
+  # Receives spans from the API, scheduler and web app and forwards them to Tempo.
+  otel-collector:
+    profiles: ["monitoring"]
+    image: otel/opentelemetry-collector:0.128.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:${OTLP_PORT:-4318}:4318"   # OTLP/HTTP, for an API or UI started on the host
+      - "127.0.0.1:${OTLP_GRPC_PORT:-4317}:4317"   # OTLP/gRPC, for the model server
+    depends_on:
+      - tempo
+
+  tempo:
+    profiles: ["monitoring"]
+    image: grafana/tempo:2.8.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./monitoring/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.4.1
+    entrypoint: ["/bin/sh", "-c"]
+    # The scrape token and the model-server and GPU targets come from the environment.
+    command:
+      - |
+        printf %s "$$METRICS_TOKEN" > /tmp/metrics_token
+        sed -e "s|__VLLM_TARGET__|$$VLLM_METRICS_TARGET|" -e "s|__GPU_TARGET__|$$GPU_EXPORTER_TARGET|" \
+          /etc/prometheus/prometheus.yml.in > /tmp/prometheus.yml
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time="$$PROMETHEUS_RETENTION" --web.enable-lifecycle
+    environment:
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      VLLM_METRICS_TARGET: ${VLLM_METRICS_TARGET:-host.docker.internal:8001}
+      GPU_EXPORTER_TARGET: ${GPU_EXPORTER_TARGET:-host.docker.internal:9835}
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-15d}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml.in:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+
+  blackbox:
+    profiles: ["monitoring"]
+    image: prom/blackbox-exporter:v0.26.0
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+
+  postgres-exporter:
+    profiles: ["monitoring"]
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:12.0.2
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/health.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+      - tempo
+
 volumes:
   db-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:

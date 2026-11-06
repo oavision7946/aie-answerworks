@@ -1,0 +1,107 @@
+groups:
+  - name: answerworks
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "The API metrics endpoint cannot be scraped (down, or METRICS_TOKEN missing)." }
+
+      - alert: NotReady
+        expr: answerworks_ready == 0 or probe_success{instance=~".*/health/ready"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "The API is not ready to serve requests." }
+
+      - alert: ReadinessCheckFailing
+        expr: answerworks_readiness_check == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Readiness check {{ $labels.check }} is failing." }
+
+      - alert: WebAppDown
+        expr: probe_success{instance=~".*/_stcore/health"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "The web app does not answer its health check." }
+
+      - alert: DatabaseDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "PostgreSQL does not answer the exporter." }
+
+      - alert: ServerErrors
+        expr: |
+          sum(rate(answerworks_request_duration_seconds_count{status="5xx"}[5m]))
+            / sum(rate(answerworks_request_duration_seconds_count[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "More than 5% of responses are 5xx." }
+
+      - alert: ChatSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(answerworks_stage_duration_seconds_bucket{stage="llm.complete"}[5m]))) > 30
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The 95th percentile of model completions is above 30 seconds." }
+
+      - alert: SlowFirstToken
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(answerworks_time_to_first_token_seconds_bucket[5m]))) > 10
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The 95th percentile of the time to first token is above 10 seconds." }
+
+      - alert: ProviderErrors
+        expr: |
+          sum by (provider) (rate(answerworks_provider_calls_total{outcome="error"}[10m]))
+            / sum by (provider) (rate(answerworks_provider_calls_total[10m])) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Provider {{ $labels.provider }} fails more than 20% of calls." }
+
+      - alert: CorpusOverdue
+        expr: answerworks_corpus_overdue == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Corpus {{ $labels.corpus }} missed its refresh (is the scheduler running?)." }
+
+      - alert: CorpusIngestError
+        expr: answerworks_corpus_ingest_error == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The last ingestion of corpus {{ $labels.corpus }} failed." }
+
+  # These only fire when the model server and the GPU exporter are being scraped.
+  - name: model-server
+    rules:
+      - alert: ModelQueueGrowing
+        expr: avg_over_time(vllm:num_requests_waiting[5m]) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "More than 5 requests wait in the model server queue." }
+
+      - alert: KvCacheNearlyFull
+        expr: max(vllm:kv_cache_usage_perc or vllm:gpu_cache_usage_perc) > 0.95
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The model server KV cache is above 95%." }
+
+      - alert: GpuHot
+        expr: gpu_temperature_celsius > 85
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "GPU {{ $labels.gpu }} is above 85 °C." }
+
+      - alert: GpuMemoryFull
+        expr: gpu_memory_used_bytes / gpu_memory_total_bytes > 0.95
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "GPU {{ $labels.gpu }} memory is above 95%." }
+
+      - alert: GpuExporterFailing
+        expr: gpu_up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "The GPU exporter cannot read nvidia-smi." }

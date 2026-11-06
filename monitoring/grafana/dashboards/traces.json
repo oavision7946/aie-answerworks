@@ -1,0 +1,234 @@
+{
+  "uid": "aw-traces",
+  "title": "AnswerWorks \u00b7 Request traces",
+  "tags": [
+    "answerworks",
+    "traces"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Find a request",
+      "collapsed": false,
+      "panels": [],
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "traces",
+      "title": "Open a trace by id (the waterfall: UI, API, database, vector search, embedding, model)",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "${trace_id}",
+          "limit": 50,
+          "tableType": "traces",
+          "filters": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 14
+      }
+    },
+    {
+      "type": "table",
+      "title": "Search by request id",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ span.answerworks.request_id = \"${request_id}\" }",
+          "limit": 50,
+          "tableType": "traces",
+          "filters": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Recent traces",
+      "collapsed": false,
+      "panels": [],
+      "id": 4,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "table",
+      "title": "Slow chat requests",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name = \"POST /chat\" && duration > ${min_duration} }",
+          "limit": 50,
+          "tableType": "traces",
+          "filters": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Errors",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ status = error }",
+          "limit": 50,
+          "tableType": "traces",
+          "filters": []
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "text",
+      "id": 7,
+      "title": "How to use",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Every API response carries an `X-Request-ID` header. Paste it into **Request id** to find the trace, then copy the trace id from the first table into **Trace id** to see the waterfall. Spans carry ids, model names, counts and timings only; prompts, answers, document text and emails are never exported."
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "request_id",
+        "label": "Request id (X-Request-ID)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ]
+      },
+      {
+        "name": "trace_id",
+        "label": "Trace id",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ]
+      },
+      {
+        "name": "min_duration",
+        "label": "Slower than",
+        "type": "textbox",
+        "query": "0ms",
+        "current": {
+          "text": "0ms",
+          "value": "0ms"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "0ms",
+            "value": "0ms"
+          }
+        ]
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  }
+}

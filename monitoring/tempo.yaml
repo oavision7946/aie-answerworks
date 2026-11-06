@@ -1,0 +1,19 @@
+# One Tempo process with local storage. Retention is set by the compactor.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: 0.0.0.0:4317 }
+
+compactor:
+  compaction:
+    block_retention: 168h   # 7 days of traces
+
+storage:
+  trace:
+    backend: local
+    wal: { path: /var/tempo/wal }
+    local: { path: /var/tempo/blocks }

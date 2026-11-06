@@ -1,0 +1,132 @@
+# promtool test rules monitoring/alerts_test.yml   (also: make test-alerts)
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: a failing readiness check fires after two minutes, and only for that check
+    input_series:
+      - series: 'answerworks_readiness_check{check="database"}'
+        values: "1 1 0 0 0 0 0"
+      - series: 'answerworks_readiness_check{check="auth"}'
+        values: "1x6"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ReadinessCheckFailing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ReadinessCheckFailing
+        exp_alerts:
+          - exp_labels: { severity: critical, check: database }
+            exp_annotations: { summary: "Readiness check database is failing." }
+
+  - interval: 1m
+    name: not ready, from the gauge or from the probe
+    input_series:
+      - series: "answerworks_ready"
+        values: "1 1 0 0 0 0"
+      - series: 'probe_success{instance="http://api:8000/health/ready"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NotReady
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations: { summary: "The API is not ready to serve requests." }
+
+  - interval: 1m
+    name: server errors above five percent
+    input_series:
+      - series: 'answerworks_request_duration_seconds_count{route="/chat",status="2xx"}'
+        values: "0+8x12"
+      - series: 'answerworks_request_duration_seconds_count{route="/chat",status="5xx"}'
+        values: "0+2x12"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ServerErrors
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "More than 5% of responses are 5xx." }
+
+  - interval: 1m
+    name: a healthy error rate stays quiet
+    input_series:
+      - series: 'answerworks_request_duration_seconds_count{route="/chat",status="2xx"}'
+        values: "0+100x12"
+      - series: 'answerworks_request_duration_seconds_count{route="/chat",status="5xx"}'
+        values: "0+1x12"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ServerErrors
+        exp_alerts: []
+
+  - interval: 1m
+    name: slow completions
+    input_series:
+      - series: 'answerworks_stage_duration_seconds_bucket{stage="llm.complete",le="10.0"}'
+        values: "0x12"
+      - series: 'answerworks_stage_duration_seconds_bucket{stage="llm.complete",le="30.0"}'
+        values: "0x12"
+      - series: 'answerworks_stage_duration_seconds_bucket{stage="llm.complete",le="60.0"}'
+        values: "0+10x12"
+      - series: 'answerworks_stage_duration_seconds_bucket{stage="llm.complete",le="+Inf"}'
+        values: "0+10x12"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: ChatSlow
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "The 95th percentile of model completions is above 30 seconds." }
+
+  - interval: 1m
+    name: corpus alerts name the corpus
+    input_series:
+      - series: 'answerworks_corpus_overdue{corpus="docs"}'
+        values: "1x10"
+      - series: 'answerworks_corpus_overdue{corpus="faq"}'
+        values: "0x10"
+      - series: 'answerworks_corpus_ingest_error{corpus="docs"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: CorpusOverdue
+        exp_alerts:
+          - exp_labels: { severity: warning, corpus: docs }
+            exp_annotations: { summary: "Corpus docs missed its refresh (is the scheduler running?)." }
+      - eval_time: 8m
+        alertname: CorpusIngestError
+        exp_alerts:
+          - exp_labels: { severity: warning, corpus: docs }
+            exp_annotations: { summary: "The last ingestion of corpus docs failed." }
+
+  - interval: 1m
+    name: gpu and model server alerts, and silence without an exporter
+    input_series:
+      - series: 'gpu_temperature_celsius{gpu="0"}'
+        values: "90x10"
+      - series: 'vllm:num_requests_waiting{model_name="m"}'
+        values: "9x10"
+      - series: 'vllm:kv_cache_usage_perc{model_name="m"}'
+        values: "0.5x10"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: GpuHot
+        exp_alerts:
+          - exp_labels: { severity: warning, gpu: "0" }
+            exp_annotations: { summary: "GPU 0 is above 85 °C." }
+      - eval_time: 8m
+        alertname: ModelQueueGrowing
+        exp_alerts:
+          - exp_labels: { severity: warning, model_name: m }
+            exp_annotations: { summary: "More than 5 requests wait in the model server queue." }
+      - eval_time: 8m
+        alertname: KvCacheNearlyFull
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GpuMemoryFull
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: GpuExporterFailing
+        exp_alerts: []

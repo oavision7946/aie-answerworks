@@ -4,7 +4,7 @@ A walk through everything the system offers today for watching itself: health ch
 
 You will need about 20 minutes and a terminal. No model keys are required.
 
-> **What is not here:** the examples read ids from headers and logs. To send spans to a tracing backend, see [Exporting traces](observability.md#exporting-traces); no backend is bundled. Everything below works from `curl`, the log output and the web app's **Admin · System** page.
+> **Two parts:** steps 0 to 10 read ids from headers and logs and work from `curl`, the log output and the web app's **Admin · System** page. Step 11 is optional: it starts the bundled Grafana stack (needs Docker) to see the same requests as dashboards and traces. Details are in [Monitoring stack](observability.md#monitoring-stack-docker-compose).
 
 ## 0. Set up
 
@@ -260,7 +260,52 @@ Try the same with the database stopped (`make db-down`): `/health` still answers
 | Search finds nothing new | Status: `corpora[]` `last_ingest_error`, `overdue` | Read the `scheduler-…` lines in the log |
 | One user's request failed | Their response's `X-Request-ID` | Search the log for it, then for its `trace=` |
 
-## 11. Clean up
+## 11. Dashboards and traces (optional, needs Docker)
+
+This runs everything in Docker Compose, with its own database (separate from `make db-up`), the keyless fake provider and the `monitoring` profile. Stop `make run-api` first: both use port 8000.
+
+1. Prepare the keyless config and make sure `.env` has `JWT_SECRET`, `METRICS_TOKEN` and `TRACING_ENABLED=true`:
+
+    ```bash
+    cp -r config /tmp/aw-config
+    sed -i 's/^default_provider: anthropic/default_provider: fake/' /tmp/aw-config/providers.yaml
+    sed -i '/^  fake:/,/enabled:/ s/enabled: false/enabled: true/' /tmp/aw-config/providers.yaml
+    export CONFIG_DIR=/tmp/aw-config
+    ```
+
+2. Start the stack and create the first admin:
+
+    ```bash
+    docker compose --profile monitoring up -d --build
+    docker compose run --rm -e BOOTSTRAP_ADMIN_EMAIL="$ADMIN_EMAIL" \
+      -e BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASSWORD" api python -m scripts.create_admin
+    ```
+
+3. Send a few chats and keep the last request id:
+
+    ```bash
+    TOKEN=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
+    for i in 1 2 3; do
+      curl -s -D - -o /dev/null localhost:8000/chat -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' -d '{"message":"hello monitoring"}' | grep -i x-request-id
+    done
+    ```
+
+4. Open http://localhost:3000 and sign in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`). After about a minute of scraping:
+    - **AnswerWorks · Health:** every tile is green, and the readiness checks show 1.
+    - **AnswerWorks · Latency:** the chat appears under its route, and the stage panels split its time into `chat.prepare`, `llm.complete`, `chat.persist` and so on.
+    - **AnswerWorks · Request traces:** paste a request id from step 3 into **Request id**. The table lists the trace; copy its trace id into **Trace id** to see the waterfall, from `POST /chat` down to each SQL statement. The prompt text is nowhere in it.
+    - **AnswerWorks · GPU and model server:** empty until you start the [GPU exporter](observability.md#monitoring-stack-docker-compose) and a model server.
+
+5. Break something. Stop the database and watch the health tiles turn red:
+
+    ```bash
+    docker compose stop db
+    ```
+
+    After two minutes the `NotReady` and `ReadinessCheckFailing` alerts fire (http://localhost:9090/alerts). Then `docker compose start db` and they clear.
+
+## 12. Clean up
 
 Stop the API, then remove the temporary files and unset the variables:
 
@@ -268,5 +313,7 @@ Stop the API, then remove the temporary files and unset the variables:
 rm -rf /tmp/aw-obs-config /tmp/aw-obs-docs
 unset ANSWERWORKS_CONFIG_DIR METRICS_TOKEN JWT_SECRET
 ```
+
+If you ran step 11, also run `docker compose --profile monitoring down -v` (removes its containers and volumes), `rm -rf /tmp/aw-config` and `unset CONFIG_DIR`, and set `TRACING_ENABLED` back to empty in `.env`.
 
 Remove the monitor's access by changing its role back to `user`, or by setting `"is_active": false`, with `PATCH /admin/users/{id}`. Remove `METRICS_TOKEN` from `.env` to turn `/metrics` off again.

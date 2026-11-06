@@ -5,6 +5,7 @@
 | API | `api/tests` (unit, integration, contract) | `make test-api` | Nothing: SQLite in memory, mocked HTTP |
 | Web app | `ui/tests` (client, state, Streamlit `AppTest` pages) | `make test-ui` | Nothing |
 | End to end | `tests_e2e` | `make test-e2e` | Running services (below) |
+| Alert rules | `monitoring/alerts_test.yml` | `make test-alerts` | Docker (runs `promtool` from the Prometheus image) |
 
 `make test` runs the API and web app suites. Each package must keep at least 85% coverage; `make lint` runs ruff, and `mypy` is strict in both packages. No test reaches a real provider or the network: adapters are tested against mocked HTTP and everything above them uses the built-in fake provider and deterministic fake embeddings.
 

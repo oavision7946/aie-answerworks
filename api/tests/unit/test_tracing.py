@@ -145,6 +145,41 @@ class TestBuildProvider(unittest.TestCase):
 
         self.assertEqual([s.name for s in memory.get_finished_spans()], ["continued"])
 
+    def test_probe_and_scrape_requests_start_no_trace_but_their_ids_still_exist(self):
+        memory = InMemorySpanExporter()
+        provider = tracing.build_provider("svc", TracingConfig(enabled=True), span_exporter=memory)
+        tracer = provider.get_tracer("t")
+
+        for path in ("/health", "/health/ready", "/metrics"):
+            with tracer.start_as_current_span("GET", attributes={"url.path": path}) as span:
+                with tracer.start_as_current_span("child"):
+                    pass
+                self.assertTrue(span.get_span_context().is_valid)
+        with tracer.start_as_current_span("GET", attributes={"url.path": "/chat"}):
+            pass
+        provider.force_flush()
+
+        self.assertEqual([s.name for s in memory.get_finished_spans()], ["GET"])
+
+    def test_a_probe_path_with_a_caller_trace_follows_the_callers_decision(self):
+        memory = InMemorySpanExporter()
+        provider = tracing.build_provider("svc", TracingConfig(enabled=True), span_exporter=memory)
+        remote = trace.SpanContext(1, 2, True, trace.TraceFlags(trace.TraceFlags.SAMPLED))
+        context = trace.set_span_in_context(trace.NonRecordingSpan(remote))
+
+        with provider.get_tracer("t").start_as_current_span(
+            "GET", context=context, attributes={"url.path": "/metrics"}
+        ):
+            pass
+        provider.force_flush()
+
+        self.assertEqual(len(memory.get_finished_spans()), 1)
+
+    def test_the_sampler_describes_itself(self):
+        provider = tracing.build_provider("svc", TracingConfig(enabled=True))
+
+        self.assertIn("QuietPathSampler", provider.sampler.get_description())
+
     def test_the_otlp_exporter_posts_to_the_traces_path_of_the_endpoint(self):
         config = TracingConfig(
             enabled=True, otlp_endpoint="http://collector:4318/", export_timeout_seconds=2

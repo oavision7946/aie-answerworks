@@ -1,4 +1,4 @@
-.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate ingest openapi test-e2e clean
+.PHONY: create-admin db-up db-down db-logs db-destroy install install-api install-ui run-api run-ui test test-api test-ui lint format migrate ingest openapi test-e2e test-alerts clean
 
 API_DIR := api
 UI_DIR  := ui
@@ -61,6 +61,10 @@ openapi:
 # End-to-end flow against running services; see docs/testing.md for starting them.
 test-e2e:
 	cd $(API_DIR) && uv run pytest ../tests_e2e -o addopts=""
+
+# Unit tests for the Prometheus alert rules (needs Docker; uses the Prometheus image's promtool).
+test-alerts:
+	docker run --rm --user 0 --entrypoint promtool -v $(CURDIR)/monitoring:/w:ro prom/prometheus:v3.4.1 test rules /w/alerts_test.yml
 
 clean:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

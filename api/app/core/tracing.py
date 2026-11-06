@@ -29,7 +29,13 @@ from opentelemetry.sdk.trace.export import (
     SpanExporter,
     SpanExportResult,
 )
-from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
+from opentelemetry.sdk.trace.sampling import (
+    Decision,
+    ParentBased,
+    Sampler,
+    SamplingResult,
+    TraceIdRatioBased,
+)
 from opentelemetry.trace import Status, StatusCode
 from sqlalchemy import event
 
@@ -159,6 +165,40 @@ class SanitizingSpanExporter(SpanExporter):
         return self.inner.force_flush(timeout_millis)
 
 
+# Probes and scrapes arrive every few seconds and would bury the traces of real requests.
+QUIET_PATHS = frozenset({"/health", "/health/ready", "/metrics"})
+
+
+class QuietPathSampler(Sampler):
+    """Drops traces that start at a probe or scrape route; everything else follows `inner`.
+
+    A request that carries a trace of its own (a parent) is left to `inner`.
+    """
+
+    def __init__(self, inner: Sampler) -> None:
+        self._inner = inner
+
+    def should_sample(  # noqa: PLR0913 (the interface is fixed)
+        self,
+        parent_context: otel_context.Context | None,
+        trace_id: int,
+        name: str,
+        kind: trace.SpanKind | None = None,
+        attributes: Mapping[str, Any] | None = None,
+        links: Sequence[trace.Link] | None = None,
+        trace_state: trace.TraceState | None = None,
+    ) -> SamplingResult:
+        parent = trace.get_current_span(parent_context).get_span_context()
+        if not parent.is_valid and (attributes or {}).get("url.path") in QUIET_PATHS:
+            return SamplingResult(Decision.DROP, trace_state=trace_state)
+        return self._inner.should_sample(
+            parent_context, trace_id, name, kind, attributes, links, trace_state
+        )
+
+    def get_description(self) -> str:
+        return f"QuietPathSampler{{{self._inner.get_description()}}}"
+
+
 def build_provider(
     service_name: str,
     config: TracingConfig | None = None,
@@ -170,7 +210,9 @@ def build_provider(
     if environment:
         attributes["deployment.environment.name"] = environment
     exporting = config is not None and config.enabled
-    sampler = ParentBased(TraceIdRatioBased(config.sample_ratio)) if config and exporting else None
+    sampler = None
+    if config and exporting:
+        sampler = QuietPathSampler(ParentBased(TraceIdRatioBased(config.sample_ratio)))
     provider = TracerProvider(resource=Resource.create(attributes), sampler=sampler)
     provider.add_span_processor(RequestCorrelationProcessor())
     if config is not None and exporting:

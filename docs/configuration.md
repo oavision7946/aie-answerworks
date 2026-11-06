@@ -21,7 +21,10 @@ Non-secret settings live in YAML under `config/`; secrets live in `.env`. Everyt
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | `create-admin` | Non-interactive first admin |
 | `METRICS_TOKEN` | API | Turns on `GET /metrics` (bearer token). Empty keeps it off |
 | `OTEL_EXPORTER_OTLP_HEADERS` | API, scheduler | Optional headers for the trace exporter, for example `Authorization=Bearer <token>`. Used only when tracing is enabled |
-| `TRACING_ENABLED`, `OTLP_ENDPOINT` | Web app | Export the web app's spans (`true`) to an OTLP/HTTP endpoint. Off by default |
+| `TRACING_ENABLED`, `OTLP_ENDPOINT` | API, scheduler, web app | Export spans (`true`) to an OTLP/HTTP endpoint. Override `config/monitoring.yaml` for the API and scheduler; the web app reads only these. Off by default |
+| `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Compose `monitoring` profile | Grafana login (default password `admin`: change it) |
+| `VLLM_METRICS_TARGET`, `GPU_EXPORTER_TARGET` | Compose `monitoring` profile | Where Prometheus scrapes the model server and the host GPU exporter (`host:port`) |
+| `GRAFANA_PORT`, `PROMETHEUS_PORT`, `OTLP_PORT`, `OTLP_GRPC_PORT`, `PROMETHEUS_RETENTION` | Compose `monitoring` profile | Host ports (all on 127.0.0.1) and metric retention (default `15d`) |
 | `LOG_LEVEL` | API, scheduler | Application log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Empty uses the default |
 | `ANSWERWORKS_CONFIG_DIR` | API | Use another config directory |
 | `API_BASE_URL` | Web app | Where the API is (default `http://127.0.0.1:8000`) |

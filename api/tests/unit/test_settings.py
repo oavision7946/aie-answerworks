@@ -242,6 +242,26 @@ class TestMonitoringConfig(unittest.TestCase):
             with patch.dict(os.environ, {"ANSWERWORKS_CONFIG_DIR": folder}):
                 self.assertEqual(load_monitoring(), MonitoringConfig())
 
+    def test_the_environment_overrides_the_file(self):
+        env = {"TRACING_ENABLED": "true", "OTLP_ENDPOINT": "http://collector:4318/"}
+        with patch.dict(os.environ, env):
+            tracing = load_monitoring().tracing
+
+        self.assertTrue(tracing.enabled)
+        self.assertEqual(tracing.otlp_endpoint, "http://collector:4318")
+        with patch.dict(os.environ, {"TRACING_ENABLED": "no"}):
+            self.assertFalse(load_monitoring().tracing.enabled)
+
+    def test_empty_variables_leave_the_file_alone(self):
+        with patch.dict(os.environ, {"TRACING_ENABLED": "", "OTLP_ENDPOINT": " "}):
+            self.assertEqual(load_monitoring(), MonitoringConfig())
+
+    def test_a_missing_file_still_takes_the_environment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            env = {"ANSWERWORKS_CONFIG_DIR": folder, "TRACING_ENABLED": "1"}
+            with patch.dict(os.environ, env):
+                self.assertTrue(load_monitoring().tracing.enabled)
+
     def test_the_endpoint_must_be_http_and_loses_a_trailing_slash(self):
         self.assertEqual(
             TracingConfig(otlp_endpoint="https://collector:4318/").otlp_endpoint,
