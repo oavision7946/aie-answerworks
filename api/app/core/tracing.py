@@ -12,6 +12,7 @@ exporter drops anything that could slip through (query strings, exception messag
 
 import logging
 import os
+import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -33,6 +34,7 @@ from opentelemetry.trace import Status, StatusCode
 from sqlalchemy import event
 
 from app.core.settings import TracingConfig
+from app.core.telemetry import STAGES, telemetry
 
 NO_ID = "-"
 
@@ -271,6 +273,7 @@ def span(name: str, **attributes: Any) -> Iterator[trace.Span]:
 
     A failure marks the span as an error with its exception type only (never the message).
     """
+    started = time.perf_counter()
     with tracer().start_as_current_span(
         name, record_exception=False, set_status_on_exception=False
     ) as current:
@@ -283,6 +286,10 @@ def span(name: str, **attributes: Any) -> Iterator[trace.Span]:
             current.set_attribute("error.type", type(exc).__name__)
             current.set_status(Status(StatusCode.ERROR))
             raise
+        finally:
+            if name in STAGES:  # timed for /metrics whether or not traces are exported
+                elapsed = time.perf_counter() - started
+                telemetry.observe("stage_duration_seconds", elapsed, stage=name)
 
 
 def iterate_in_span[T](current: trace.Span, items: Iterator[T]) -> Iterator[T]:

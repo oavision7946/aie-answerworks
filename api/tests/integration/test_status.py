@@ -240,6 +240,120 @@ class TestMetrics(StatusTestCase):
         self.assertNotIn("True", ok.text)
 
 
+def samples(text, name):
+    """The lines of one metric family: {labels string: value}."""
+    result = {}
+    for line in text.splitlines():
+        if line.startswith(name + "{") or line.startswith(name + " "):
+            key, value = line.rsplit(" ", 1)
+            result[key[len(name) :]] = float(value)
+    return result
+
+
+class TestTimingMetrics(StatusTestCase):
+    def setUp(self):
+        super().setUp()
+        self.stamp()
+        self.settings.env.metrics_token = "scrape-token"
+
+    def scrape(self):
+        response = self.client.get("/metrics", headers={"Authorization": "Bearer scrape-token"})
+        self.assertEqual(response.status_code, 200)
+        return response.text
+
+    def test_a_chat_with_documents_is_timed_by_route_and_stage(self):
+        self.upload(self.alice, "penguins.txt", PENGUINS)
+        self.chat(self.alice, "where do penguins live", use_rag=True)
+
+        text = self.scrape()
+
+        counts = samples(text, "answerworks_request_duration_seconds_count")
+        self.assertEqual(counts['{route="/chat",status="2xx"}'], 1)
+        self.assertNotIn("conversation", "".join(counts))  # templates, never concrete ids
+        stages = samples(text, "answerworks_stage_duration_seconds_count")
+        for stage in ("chat.prepare", "rag.retrieve", "embed.query", "vector.search"):
+            self.assertEqual(stages[f'{{stage="{stage}"}}'], 1, stage)
+        self.assertEqual(stages['{stage="llm.complete"}'], 1)
+        self.assertEqual(stages['{stage="chat.persist"}'], 1)
+        calls = samples(text, "answerworks_provider_call_duration_seconds_count")
+        self.assertTrue(any('operation="complete"' in k for k in calls))
+        tokens = samples(text, "answerworks_tokens_total")
+        self.assertGreater(sum(v for k, v in tokens.items() if 'direction="input"' in k), 0)
+        self.assertGreater(sum(v for k, v in tokens.items() if 'direction="output"' in k), 0)
+
+    def test_buckets_are_cumulative_and_end_at_the_count(self):
+        telemetry.observe("stage_duration_seconds", 0.003, stage="x")
+        telemetry.observe("stage_duration_seconds", 0.3, stage="x")
+        telemetry.observe("stage_duration_seconds", 1000.0, stage="x")
+
+        text = self.scrape()
+
+        buckets = samples(text, "answerworks_stage_duration_seconds_bucket")
+        self.assertEqual(buckets['{stage="x",le="0.005"}'], 1)
+        self.assertEqual(buckets['{stage="x",le="0.5"}'], 2)
+        self.assertEqual(buckets['{stage="x",le="+Inf"}'], 3)
+        self.assertEqual(
+            samples(text, "answerworks_stage_duration_seconds_count")['{stage="x"}'], 3
+        )
+        total = samples(text, "answerworks_stage_duration_seconds_sum")['{stage="x"}']
+        self.assertAlmostEqual(total, 1000.303)
+
+    def test_a_streamed_answer_records_the_time_to_first_token(self):
+        self.upload(self.alice, "penguins.txt", PENGUINS)
+
+        self.chat(self.alice, "where do penguins live", use_rag=True, stream=True)
+
+        ttft = samples(self.scrape(), "answerworks_time_to_first_token_seconds_count")
+        self.assertEqual(sum(ttft.values()), 1)
+        (key,) = ttft
+        self.assertIn('provider="fake"', key)
+
+    def test_unknown_paths_share_one_route_label(self):
+        self.client.get("/no/such/thing/1")
+        self.client.get("/no/such/thing/2")
+
+        counts = samples(self.scrape(), "answerworks_request_duration_seconds_count")
+
+        self.assertEqual(counts['{route="unmatched",status="4xx"}'], 2)
+
+    def test_gauges_report_readiness_checks_and_ingest_errors(self):
+        with Session(self.engine) as db:
+            db.add_all(
+                [
+                    Corpus(name="broken", last_ingest_error="boom"),
+                    Corpus(name="fine"),
+                ]
+            )
+            db.commit()
+
+        text = self.scrape()
+
+        checks = samples(text, "answerworks_readiness_check")
+        self.assertEqual(checks['{check="database"}'], 1)
+        self.assertIn('{check="providers"}', checks)
+        errors = samples(text, "answerworks_corpus_ingest_error")
+        self.assertEqual(errors['{corpus="broken"}'], 1)
+        self.assertEqual(errors['{corpus="fine"}'], 0)
+        self.assertEqual(samples(text, "answerworks_requests_in_flight")[""], 1)  # this scrape
+
+    def test_a_failing_check_flips_its_gauge(self):
+        self.settings.env.jwt_secret = ""
+
+        checks = samples(self.scrape(), "answerworks_readiness_check")
+
+        self.assertEqual(checks['{check="auth"}'], 0)
+        self.assertEqual(checks['{check="database"}'], 1)
+
+    def test_nothing_in_the_output_names_a_user_or_a_prompt(self):
+        self.upload(self.alice, "penguins.txt", PENGUINS)
+        self.chat(self.alice, "PROMPTSECRET where", use_rag=True)
+
+        text = self.scrape()
+
+        self.assertNotIn("PROMPTSECRET", text)
+        self.assertNotIn("alice@example.com", text)
+
+
 class TestTelemetry(unittest.TestCase):
     def setUp(self):
         telemetry.reset()
@@ -267,6 +381,34 @@ class TestTelemetry(unittest.TestCase):
         self.assertIsNotNone(stats.last_error_at)
         stats.ok = 99  # the snapshot is a copy
         self.assertEqual(telemetry.snapshot()["providers"][("openai", "embed")].ok, 1)
+
+    def test_histograms_count_each_observation_in_its_bucket(self):
+        telemetry.observe("x", 0.005, kind="a")  # a bound belongs to its own bucket
+        telemetry.observe("x", 0.006, kind="a")
+        telemetry.observe("x", 500, kind="a")
+        telemetry.observe("x", 1, kind="b")
+
+        series = telemetry.snapshot()["histograms"]["x"]
+
+        a = series[(("kind", "a"),)]
+        self.assertEqual((a.counts[0], a.counts[1], a.counts[-1], a.count), (1, 1, 1, 3))
+        self.assertAlmostEqual(a.total, 500.011)
+        self.assertEqual(series[(("kind", "b"),)].count, 1)
+        a.count = 99  # the snapshot is a copy
+        self.assertEqual(telemetry.snapshot()["histograms"]["x"][(("kind", "a"),)].count, 3)
+
+    def test_tokens_and_in_flight_requests(self):
+        telemetry.tokens_used("fake", "m", 10, 4)
+        telemetry.tokens_used("fake", "m", 1, 1)
+        telemetry.request_started()
+        telemetry.request_started()
+        telemetry.request_finished()
+
+        snapshot = telemetry.snapshot()
+
+        self.assertEqual(snapshot["tokens"][("fake", "m", "input")], 11)
+        self.assertEqual(snapshot["tokens"][("fake", "m", "output")], 5)
+        self.assertEqual(snapshot["in_flight"], 1)
 
     def test_reset_starts_over(self):
         telemetry.request(200, 0.1)

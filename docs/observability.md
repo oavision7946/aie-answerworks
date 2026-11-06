@@ -66,12 +66,21 @@ scrape_configs:
 | `answerworks_provider_loaded{provider}` | gauge | Provider configured and its key present |
 | `answerworks_provider_calls_total{provider,operation,outcome}` | counter | Calls since start, `ok` or `error` |
 | `answerworks_requests_total{status}` | counter | Responses by class |
-| `answerworks_request_duration_seconds_sum`, `_count` | counter | Total and number of timed requests |
+| `answerworks_request_duration_seconds{route,status}` | histogram | Time until the response starts, by route template (`/conversations/{conversation_id}`, never a concrete URL; `unmatched` for unknown paths) and status class. A streamed chat counts until its first byte; use the time to first token for the wait |
+| `answerworks_stage_duration_seconds{stage}` | histogram | Time in each step of a request: `chat.prepare`, `rag.retrieve`, `embed.query`, `embed.batch`, `vector.search`, `llm.complete`, `chat.persist` |
+| `answerworks_provider_call_duration_seconds{provider,operation,outcome}` | histogram | Each model or embedding call (`complete`, `stream`, `embed`), including streamed ones |
+| `answerworks_time_to_first_token_seconds{provider,model}` | histogram | From the model call to the first streamed token |
+| `answerworks_tokens_total{provider,model,direction}` | counter | Tokens sent (`input`) and received (`output`) |
+| `answerworks_requests_in_flight` | gauge | Requests being answered (a scrape counts itself) |
+| `answerworks_readiness_check{check}` | gauge | 1 when a readiness check passes: `database`, `migrations`, `auth`, `providers` (and `pgvector` on PostgreSQL) |
 | `answerworks_rows{kind}` | gauge | Row counts |
 | `answerworks_corpus_last_ingested_timestamp_seconds{corpus}` | gauge | When a corpus was last ingested |
 | `answerworks_corpus_overdue{corpus}` | gauge | 1 when a scheduled corpus missed its refresh |
+| `answerworks_corpus_ingest_error{corpus}` | gauge | 1 when the last ingestion of a corpus failed |
 
-Useful alerts: `answerworks_ready == 0` for a few minutes, `answerworks_corpus_overdue == 1`, and a rising ratio of `outcome="error"` to `outcome="ok"` for a provider.
+Histograms use the buckets 5 ms to 120 s, and are recorded whether or not traces are exported. Labels are fixed names (routes, stages, providers, models); no user, prompt, document or conversation id ever becomes a label. Like the counters, they are per process and restart at zero.
+
+Useful alerts: `histogram_quantile(0.95, sum by (le) (rate(answerworks_stage_duration_seconds_bucket{stage="llm.complete"}[5m]))) > 10`, `answerworks_ready == 0` for a few minutes, `answerworks_corpus_overdue == 1`, and a rising ratio of `outcome="error"` to `outcome="ok"` for a provider.
 
 ## Request ids and traces
 

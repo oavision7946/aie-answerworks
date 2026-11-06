@@ -13,7 +13,7 @@ from sqlalchemy import Connection, Engine, text
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
-from app.core.telemetry import telemetry
+from app.core.telemetry import BUCKETS, telemetry
 from app.db.repositories import corpus_repo, stats_repo
 from app.schemas.status import (
     CorpusStatus,
@@ -173,6 +173,12 @@ def _corpora(db: Session, now: datetime) -> list[CorpusStatus]:
 def system_status(
     db: Session, engine: Engine, settings: Settings, registry: ProviderRegistry
 ) -> SystemStatus:
+    return _system_status(db, engine, settings, registry)[0]
+
+
+def _system_status(
+    db: Session, engine: Engine, settings: Settings, registry: ProviderRegistry
+) -> tuple[SystemStatus, Readiness]:
     database_status = database(engine)
     ready = _readiness(database_status, settings, registry)
     snapshot = telemetry.snapshot()
@@ -180,7 +186,7 @@ def system_status(
     providers = _providers(settings, registry)
     corpora = _corpora(db, datetime.now(UTC)) if database_status.status == "ok" else []
     healthy = ready.status == "ok" and not any(c.overdue for c in corpora)
-    return SystemStatus(
+    status = SystemStatus(
         status="ok" if healthy else "degraded",
         version=version(),
         environment=settings.app.app.environment,
@@ -206,15 +212,21 @@ def system_status(
             average_ms=round(snapshot["request_seconds"] / total * 1000, 1) if total else None,
         ),
     )
+    return status, ready
 
 
 def _number(value: float) -> float | int:
     return int(value) if isinstance(value, bool) else value
 
 
+def _le(bound: float) -> str:
+    return "+Inf" if bound == float("inf") else repr(bound)
+
+
 def prometheus(db: Session, engine: Engine, settings: Settings, registry: ProviderRegistry) -> str:
-    """The same numbers as the status page in the Prometheus text format."""
-    status = system_status(db, engine, settings, registry)
+    """The same numbers as the status page, plus timings, in the Prometheus text format."""
+    status, ready = _system_status(db, engine, settings, registry)
+    snapshot = telemetry.snapshot()
     lines: list[str] = []
 
     def metric(name: str, kind: str, help_text: str, samples: list[tuple[str, float]]) -> None:
@@ -226,11 +238,33 @@ def prometheus(db: Session, engine: Engine, settings: Settings, registry: Provid
         escaped = {k: v.replace("\\", "\\\\").replace('"', '\\"') for k, v in pairs.items()}
         return "{" + ",".join(f'{k}="{v}"' for k, v in escaped.items()) + "}"
 
+    def histogram(name: str, help_text: str) -> None:
+        """Render a recorded histogram; one series per label set, buckets are cumulative."""
+        series = snapshot["histograms"].get(name, {})
+        lines.append(f"# HELP answerworks_{name} {help_text}")
+        lines.append(f"# TYPE answerworks_{name} histogram")
+        for labels, hist in sorted(series.items()):
+            base = dict(labels)
+            running = 0
+            for bound, count in zip((*BUCKETS, float("inf")), hist.counts, strict=True):
+                running += count
+                lines.append(f"answerworks_{name}_bucket{label(**base, le=_le(bound))} {running}")
+            lines.append(f"answerworks_{name}_sum{label(**base)} {round(hist.total, 6)}")
+            lines.append(f"answerworks_{name}_count{label(**base)} {hist.count}")
+
     metric("up", "gauge", "1 while the API process is running.", [("", 1)])
     metric("ready", "gauge", "1 when the API can serve requests.", [("", status.status == "ok")])
     metric(
+        "readiness_check", "gauge", "1 when a readiness check passes, by check.",
+        [(label(check=k), v == "ok") for k, v in sorted(ready.checks.items())],
+    )  # fmt: skip
+    metric(
         "uptime_seconds", "gauge", "Seconds since the API started.", [("", status.uptime_seconds)]
     )
+    metric(
+        "requests_in_flight", "gauge", "Requests being answered right now.",
+        [("", snapshot["in_flight"])],
+    )  # fmt: skip
     metric(
         "database_up", "gauge", "1 when the database answers.",
         [("", status.database.status == "ok")],
@@ -253,17 +287,28 @@ def prometheus(db: Session, engine: Engine, settings: Settings, registry: Provid
         ],
     )  # fmt: skip
     metric(
+        "tokens_total", "counter", "Tokens sent to and received from models since start.",
+        [
+            (label(provider=p, model=m, direction=d), count)
+            for (p, m, d), count in sorted(snapshot["tokens"].items())
+        ],
+    )  # fmt: skip
+    metric(
         "requests_total", "counter", "HTTP responses since start, by status class.",
         [(label(status=k), v) for k, v in sorted(status.requests.by_status.items())],
     )  # fmt: skip
-    metric(
-        "request_duration_seconds_sum", "counter", "Total time spent answering requests.",
-        [("", round(telemetry.snapshot()["request_seconds"], 6))],
-    )  # fmt: skip
-    metric(
-        "request_duration_seconds_count", "counter", "Requests timed.",
-        [("", status.requests.total)],
-    )  # fmt: skip
+    histogram(
+        "request_duration_seconds",
+        "Time to the first byte of the response, by route template and status class.",
+    )
+    histogram("stage_duration_seconds", "Time spent in each step of a request.")
+    histogram(
+        "provider_call_duration_seconds",
+        "Time of each model or embedding call, by provider, operation and outcome.",
+    )
+    histogram(
+        "time_to_first_token_seconds", "Time from the model call to the first streamed token."
+    )
     metric(
         "rows", "gauge", "Rows stored, by kind.",
         [(label(kind=k), v) for k, v in sorted(status.counts.items())],
@@ -279,5 +324,9 @@ def prometheus(db: Session, engine: Engine, settings: Settings, registry: Provid
     metric(
         "corpus_overdue", "gauge", "1 when a scheduled corpus missed its refresh.",
         [(label(corpus=c.name), c.overdue) for c in status.corpora],
+    )  # fmt: skip
+    metric(
+        "corpus_ingest_error", "gauge", "1 when the last ingestion of a corpus failed.",
+        [(label(corpus=c.name), bool(c.last_ingest_error)) for c in status.corpora],
     )  # fmt: skip
     return "\n".join(lines) + "\n"

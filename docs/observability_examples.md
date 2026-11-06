@@ -178,6 +178,19 @@ answerworks_requests_total{status="2xx"} 15
 answerworks_requests_total{status="4xx"} 4
 ```
 
+Timings are histograms. The average time of each step of a request is its `_sum` divided by its `_count`:
+
+```bash
+curl -s localhost:8000/metrics -H "Authorization: Bearer $METRICS_TOKEN" \
+  | grep -E "^answerworks_(stage_duration_seconds_(sum|count)|readiness_check)"
+```
+
+```
+answerworks_readiness_check{check="database"} 1
+answerworks_stage_duration_seconds_sum{stage="vector.search"} 0.004213
+answerworks_stage_duration_seconds_count{stage="vector.search"} 2
+```
+
 These are the same numbers as the status report, in the text format Prometheus reads. The [Observability](observability.md#metrics-for-prometheus) page has the scrape configuration and a list of useful alerts.
 
 ## 8. Watch a scheduled run

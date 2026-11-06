@@ -29,9 +29,10 @@ from app.services.llm.retry import call_with_retry, log_retry
 logger = logging.getLogger(__name__)
 
 
-def _record_usage(current: Span, usage: Usage) -> None:
+def _record_usage(current: Span, usage: Usage, provider: str, model: str) -> None:
     current.set_attribute("answerworks.tokens.input", usage.input_tokens)
     current.set_attribute("answerworks.tokens.output", usage.output_tokens)
+    telemetry.tokens_used(provider, model, usage.input_tokens, usage.output_tokens)
 
 
 def _complete(resolved: ResolvedModel, messages: list[ChatMessage]) -> Completion:
@@ -48,7 +49,7 @@ def _complete(resolved: ResolvedModel, messages: list[ChatMessage]) -> Completio
                 logger,
                 f"{provider.name} completion",
             )
-            _record_usage(current, completion.usage)
+            _record_usage(current, completion.usage, provider.name, resolved.model.id)
         telemetry.provider_call(provider.name, "complete", True, time.perf_counter() - started)
         return completion
     except TransientProviderError as exc:
@@ -151,9 +152,15 @@ def stream_events(
             for event in stream:
                 if isinstance(event, TextDelta):
                     if not answer_parts:
+                        first_token = time.perf_counter() - attempt_started
                         current.set_attribute(
-                            "answerworks.time_to_first_token_ms",
-                            int((time.perf_counter() - attempt_started) * 1000),
+                            "answerworks.time_to_first_token_ms", int(first_token * 1000)
+                        )
+                        telemetry.observe(
+                            "time_to_first_token_seconds",
+                            first_token,
+                            provider=provider.name,
+                            model=resolved.model.id,
                         )
                     answer_parts.append(event.content)
                     if not (force_bad_first_response and attempt == 0):
@@ -161,7 +168,7 @@ def stream_events(
                 elif isinstance(event, StreamEnd):
                     usage = event.usage
                     if usage is not None:
-                        _record_usage(current, usage)
+                        _record_usage(current, usage, provider.name, resolved.model.id)
             current.set_attribute("answerworks.chunks", len(answer_parts))
 
             if force_bad_first_response and attempt == 0:

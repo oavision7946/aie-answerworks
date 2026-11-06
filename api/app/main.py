@@ -55,8 +55,14 @@ async def count_requests(
 ) -> Response:
     """Feed the request counters behind /admin/status and /metrics."""
     started = time.perf_counter()
-    response = await call_next(request)
-    telemetry.request(response.status_code, time.perf_counter() - started)
+    telemetry.request_started()
+    try:
+        response = await call_next(request)
+    finally:
+        telemetry.request_finished()
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)  # the template, so ids never become labels
+    telemetry.request(response.status_code, time.perf_counter() - started, path or "unmatched")
     return response
 
 
