@@ -6,8 +6,10 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+from opentelemetry.trace import Span, Status, StatusCode
 from pydantic import ValidationError
 
+from app.core import tracing
 from app.core.telemetry import telemetry
 from app.schemas.ask import AskRequest, AskResponse, ModelOutput
 from app.services.llm.base import ChatMessage, Completion, StreamEnd, TextDelta, Usage
@@ -27,16 +29,26 @@ from app.services.llm.retry import call_with_retry, log_retry
 logger = logging.getLogger(__name__)
 
 
+def _record_usage(current: Span, usage: Usage) -> None:
+    current.set_attribute("answerworks.tokens.input", usage.input_tokens)
+    current.set_attribute("answerworks.tokens.output", usage.output_tokens)
+
+
 def _complete(resolved: ResolvedModel, messages: list[ChatMessage]) -> Completion:
     provider = resolved.provider
     started = time.perf_counter()
     try:
-        completion = call_with_retry(
-            lambda: provider.complete(resolved.model.id, messages),
-            resolved.request,
-            logger,
-            f"{provider.name} completion",
-        )
+        with tracing.span(
+            "llm.complete",
+            **{"answerworks.provider": provider.name, "answerworks.model": resolved.model.id},
+        ) as current:
+            completion = call_with_retry(
+                lambda: provider.complete(resolved.model.id, messages),
+                resolved.request,
+                logger,
+                f"{provider.name} completion",
+            )
+            _record_usage(current, completion.usage)
         telemetry.provider_call(provider.name, "complete", True, time.perf_counter() - started)
         return completion
     except TransientProviderError as exc:
@@ -123,14 +135,34 @@ def stream_events(
     for attempt in range(max_attempts):
         answer_parts: list[str] = []
         usage: Usage | None = None
+        attempt_started = time.perf_counter()
+        current = tracing.tracer().start_span(
+            "llm.stream",
+            attributes={
+                "answerworks.provider": provider.name,
+                "answerworks.model": resolved.model.id,
+                "answerworks.attempt": attempt + 1,
+            },
+        )
         try:
-            for event in provider.stream(resolved.model.id, messages):
+            stream = tracing.iterate_in_span(
+                current, iter(provider.stream(resolved.model.id, messages))
+            )
+            for event in stream:
                 if isinstance(event, TextDelta):
+                    if not answer_parts:
+                        current.set_attribute(
+                            "answerworks.time_to_first_token_ms",
+                            int((time.perf_counter() - attempt_started) * 1000),
+                        )
                     answer_parts.append(event.content)
                     if not (force_bad_first_response and attempt == 0):
                         yield "delta", {"content": event.content}
                 elif isinstance(event, StreamEnd):
                     usage = event.usage
+                    if usage is not None:
+                        _record_usage(current, usage)
+            current.set_attribute("answerworks.chunks", len(answer_parts))
 
             if force_bad_first_response and attempt == 0:
                 logger.warning("Streaming response was deliberately rejected by the test control")
@@ -164,9 +196,12 @@ def stream_events(
                 cost_usd=compute_cost_usd(resolved.model.pricing, usage),
             )
             telemetry.provider_call(provider.name, "stream", True, time.perf_counter() - started_at)
+            current.end()  # the model call is over; what the caller does next is not part of it
             yield "done", completion.model_dump()
             return
         except Exception as exc:
+            current.set_attribute("error.type", type(exc).__name__)
+            current.set_status(Status(StatusCode.ERROR))
             telemetry.provider_call(
                 provider.name, "stream", False, time.perf_counter() - started_at
             )
@@ -181,3 +216,6 @@ def stream_events(
             )
             yield "error", {"detail": UNAVAILABLE if transient else FAILED}
             return
+        finally:
+            if current.is_recording():
+                current.end()

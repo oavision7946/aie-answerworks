@@ -3,6 +3,7 @@
 import json
 import re
 import unittest
+from unittest.mock import patch
 
 import httpx
 import respx
@@ -136,6 +137,40 @@ class TestTraceparent(unittest.TestCase):
         headers = route.calls.last.request.headers
         self.assertNotIn("authorization", headers)
         self.assertIn("traceparent", headers)
+
+    @respx.mock
+    def test_a_failing_call_records_the_exception_type_and_not_its_message(self):
+        respx.get(f"{BASE}/auth/me").mock(side_effect=httpx.ConnectError("SECRET host details"))
+
+        with self.assertRaises(RuntimeError):
+            api_client.get_me("t")
+
+        (span,) = exporter.get_finished_spans()
+        self.assertEqual(span.attributes["error.type"], "ConnectError")
+        self.assertEqual(span.events, ())
+        self.assertIsNone(span.status.description)
+        self.assertNotIn("SECRET", str(dict(span.attributes)))
+
+    def test_the_exporter_is_only_built_when_tracing_is_enabled(self):
+        memory = InMemorySpanExporter()
+
+        off = tracing.build_provider("ui", False, "http://c:4318", memory)
+        on = tracing.build_provider("ui", True, "http://c:4318", memory)
+        for provider in (off, on):
+            with provider.get_tracer("t").start_as_current_span("op"):
+                pass
+            provider.force_flush()
+
+        self.assertEqual(len(memory.get_finished_spans()), 1)  # only the enabled one exported
+
+    def test_the_otlp_exporter_posts_to_the_traces_path(self):
+        target = "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"
+
+        with patch(target) as otlp:
+            otlp.return_value = InMemorySpanExporter()
+            tracing.build_provider("ui", True, "http://collector:4318")
+
+        otlp.assert_called_once_with(endpoint="http://collector:4318/v1/traces", timeout=5)
 
     def test_initialising_twice_keeps_the_first_provider(self):
         before = trace.get_tracer_provider()

@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.core import tracing
 from app.core.settings import ModelConfig, ProviderConfig, RequestConfig, Settings, get_settings
 from app.schemas.ask import ModelInfo
 from app.services.llm.base import Provider
@@ -31,7 +32,7 @@ def build_provider(
         case "fake":
             return FakeProvider(name, config, request)
         case "openai_compatible":
-            return LocalProvider(name, config, request, api_key)
+            return LocalProvider(name, config, request, api_key, tracing.propagating_client())
         case "openai" | "anthropic" if not api_key:
             logger.warning(
                 "Provider %r is enabled but %s is not set; skipping it", name, config.api_key_env

@@ -85,9 +85,42 @@ The API also takes part in a W3C trace. It continues an incoming `traceparent` h
 
 - `request` is the request id; `trace` is the trace id. Searching either one finds every line of that request.
 - The scheduler gives each pass an id of the form `scheduler-<12 hex>` and one trace (`scheduler.run`, with a `scheduler.ingest_corpus` span per corpus).
-- Spans carry ids, route templates, status codes and corpus names. They never carry prompts, answers, document text or email addresses.
-- Nothing is exported yet: the ids exist and appear in logs and headers, but no tracing backend receives spans.
 - `LOG_LEVEL` (default `WARNING`; the scheduler defaults to `INFO`) sets how much the application logs. The server's own access log lines do not carry the ids.
+
+## Exporting traces
+
+Spans are always created, so ids reach headers and logs, but they are sent anywhere only when `config/monitoring.yaml` turns tracing on:
+
+```yaml
+tracing:
+  enabled: true
+  otlp_endpoint: http://localhost:4318   # OTLP over HTTP; /v1/traces is appended
+  sample_ratio: 1.0                      # share of new traces kept; a caller's decision is respected
+```
+
+Any OpenTelemetry-compatible collector or backend that accepts OTLP over HTTP can receive them. If it needs credentials, set `OTEL_EXPORTER_OTLP_HEADERS` in `.env` (for example `Authorization=Bearer <token>`). Without the file, or with `enabled: false`, nothing is exported and no exporter is loaded. The web app exports its own spans when `TRACING_ENABLED=true` is set (with `OTLP_ENDPOINT` for the address); both services share trace ids either way.
+
+One chat request is one trace:
+
+| Span | Where | Useful attributes |
+|---|---|---|
+| `POST /chat` | The API's HTTP handling (one span per request, named after the route) | `http.route`, `http.response.status_code`, `answerworks.request_id` |
+| `chat.prepare` | Checking the conversation, choosing the model, retrieving passages, building the prompt | `answerworks.provider`, `answerworks.model`, `answerworks.use_rag`, `answerworks.citations` |
+| `rag.retrieve` | Retrieval for the question | `answerworks.embedding`, `answerworks.chunking`, `answerworks.top_k`, `answerworks.hits` |
+| `embed.query` / `embed.batch` | Embedding the question; each call to the embedding provider | `answerworks.provider`, `answerworks.model`, `answerworks.texts` |
+| `vector.search` | Similarity search | `db.system`, `answerworks.top_k`, `answerworks.rows` |
+| `llm.complete` / `llm.stream` | The call to the model server | `answerworks.provider`, `answerworks.model`, `answerworks.tokens.input`, `answerworks.tokens.output`; for streams also `answerworks.time_to_first_token_ms` |
+| `chat.persist` | Storing the exchange | `answerworks.conversation_id` |
+| `db.query` | Each SQL statement (when exporting) | `db.operation.name`, `db.query.text` (placeholders, never values) |
+
+A model server on your own network (a provider of type `openai_compatible`) also receives a `traceparent` header, so a server that supports tracing can join the trace. Hosted providers (Anthropic, OpenAI) never receive your trace ids.
+
+What is exported, and what is not:
+
+- Spans carry ids, route templates, status codes, model and corpus names, sizes, counts and timings. The user is identified by id only.
+- They never carry prompts, answers, document text, email addresses, passwords or tokens. SQL spans show the statement with placeholders, not the values bound to it.
+- Everything is filtered again on the way out: query strings, request and response headers and exception messages and stack traces are removed, status descriptions are dropped (a failure keeps its exception type only) and long values are clipped.
+- Failures appear as a span marked as an error with `error.type` set to the exception class, never its text.
 
 ## The other services
 

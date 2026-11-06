@@ -1,0 +1,11 @@
+# Tracing and monitoring. Everything here is optional: without this file, tracing is off.
+tracing:
+  enabled: false                       # turn on to export spans to an OTLP collector
+  otlp_endpoint: http://localhost:4318 # OTLP over HTTP; /v1/traces is appended
+  sample_ratio: 1.0                    # share of new traces kept (0.0 to 1.0); a caller's decision is respected
+  export_timeout_seconds: 5
+
+# How each service names itself in traces.
+service_names:
+  api: answerworks-api
+  scheduler: answerworks-scheduler

@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.config import REPO_ROOT, clear_config_cache, load_env, load_yaml
+from app.core.config import REPO_ROOT, clear_config_cache, config_dir, load_env, load_yaml
 
 
 class _Strict(BaseModel):
@@ -239,12 +239,41 @@ class EnvSettings(BaseSettings):
     api_base_url: str = "http://localhost:8000"
 
 
+class TracingConfig(_Strict):
+    """Whether and where spans are exported. Off by default; ids still reach logs and headers."""
+
+    enabled: bool = False
+    # OTLP over HTTP; "/v1/traces" is appended. Credentials, if any, go in the environment
+    # variable OTEL_EXPORTER_OTLP_HEADERS, never in this file.
+    otlp_endpoint: str = "http://localhost:4318"
+    sample_ratio: float = Field(default=1.0, ge=0.0, le=1.0)
+    export_timeout_seconds: float = Field(default=5.0, gt=0)
+
+    @field_validator("otlp_endpoint")
+    @classmethod
+    def endpoint_is_http(cls, value: str) -> str:
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("must start with http:// or https://")
+        return value.rstrip("/")
+
+
+class ServiceNames(_Strict):
+    api: str = "answerworks-api"
+    scheduler: str = "answerworks-scheduler"
+
+
+class MonitoringConfig(_Strict):
+    tracing: TracingConfig = TracingConfig()
+    service_names: ServiceNames = ServiceNames()
+
+
 class Settings(BaseModel):
     app: AppConfig
     providers: ProvidersConfig
     rag: RagConfig
     corpora: CorporaConfig
     env: EnvSettings
+    monitoring: MonitoringConfig = MonitoringConfig()
 
     @model_validator(mode="after")
     def cross_references_must_resolve(self) -> "Settings":
@@ -270,6 +299,13 @@ class Settings(BaseModel):
         }
 
 
+def load_monitoring() -> MonitoringConfig:
+    """config/monitoring.yaml; a missing file means everything off."""
+    if not (config_dir() / "monitoring.yaml").exists():
+        return MonitoringConfig()
+    return MonitoringConfig.model_validate(load_yaml("monitoring.yaml"))
+
+
 def load_settings() -> Settings:
     load_env()
     return Settings(
@@ -278,6 +314,7 @@ def load_settings() -> Settings:
         rag=RagConfig.model_validate(load_yaml("rag.yaml")),
         corpora=CorporaConfig.model_validate(load_yaml("corpora.yaml")),
         env=EnvSettings(),
+        monitoring=load_monitoring(),
     )
 
 

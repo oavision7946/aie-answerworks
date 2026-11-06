@@ -4,7 +4,7 @@ A walk through everything the system offers today for watching itself: health ch
 
 You will need about 20 minutes and a terminal. No model keys are required.
 
-> **What is not here:** spans are created and their ids appear in headers and logs, but nothing is sent to a tracing backend yet. Everything below works from `curl`, the log output and the web app's **Admin · System** page.
+> **What is not here:** the examples read ids from headers and logs. To send spans to a tracing backend, see [Exporting traces](observability.md#exporting-traces); no backend is bundled. Everything below works from `curl`, the log output and the web app's **Admin · System** page.
 
 ## 0. Set up
 

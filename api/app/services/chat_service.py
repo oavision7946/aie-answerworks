@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core import tracing
 from app.db.models import Conversation, User
 from app.db.repositories import conversation_repo
 from app.schemas.ask import AskResponse
@@ -70,6 +71,26 @@ def prepare(
 
     Raises before any provider call.
     """
+    with tracing.span(
+        "chat.prepare",
+        **{"answerworks.user_id": str(user.id), "answerworks.use_rag": request.use_rag},
+    ) as current:
+        turn = _prepare(db, user, request, registry, history_messages, rag)
+        current.set_attribute("answerworks.provider", turn.resolved.provider.name)
+        current.set_attribute("answerworks.model", turn.resolved.model.id)
+        current.set_attribute("answerworks.history_messages", len(turn.prompt) - 1)
+        current.set_attribute("answerworks.citations", len(turn.citations))
+        return turn
+
+
+def _prepare(
+    db: Session,
+    user: User,
+    request: ChatRequest,
+    registry: ProviderRegistry,
+    history_messages: int,
+    rag: RagContext | None,
+) -> Turn:
     started_at = datetime.now(UTC)
     conversation = None
     history: list[ChatMessage] = []
@@ -107,6 +128,13 @@ def prepare(
 
 
 def _persist(db: Session, turn: Turn, answer: AskResponse) -> ChatResponse:
+    with tracing.span("chat.persist", **{"answerworks.use_rag": turn.use_rag}) as current:
+        stored = _store(db, turn, answer)
+        current.set_attribute("answerworks.conversation_id", str(stored.conversation_id))
+        return stored
+
+
+def _store(db: Session, turn: Turn, answer: AskResponse) -> ChatResponse:
     if turn.conversation_id is None:
         conversation = conversation_repo.create(
             db, turn.user_id, conversation_service.title_from(turn.message), None, None

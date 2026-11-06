@@ -3,6 +3,7 @@
 import logging
 import time
 
+from app.core import tracing
 from app.core.settings import RequestConfig
 from app.core.telemetry import telemetry
 from app.services.llm.base import Provider
@@ -38,12 +39,23 @@ class Embedder:
         spec = self.spec
         started = time.perf_counter()
         try:
-            vectors = call_with_retry(
-                lambda: self.provider.embed(spec.embedding_model, batch, spec.embedding_dimensions),
-                self.request,
-                logger,
-                f"{self.provider.name} embeddings",
-            )
+            with tracing.span(
+                "embed.batch",
+                **{
+                    "answerworks.provider": self.provider.name,
+                    "answerworks.model": spec.embedding_model,
+                    "answerworks.texts": len(batch),
+                    "answerworks.dimensions": spec.embedding_dimensions,
+                },
+            ):
+                vectors = call_with_retry(
+                    lambda: self.provider.embed(
+                        spec.embedding_model, batch, spec.embedding_dimensions
+                    ),
+                    self.request,
+                    logger,
+                    f"{self.provider.name} embeddings",
+                )
         except TransientProviderError as exc:
             telemetry.provider_call(
                 self.provider.name, "embed", False, time.perf_counter() - started

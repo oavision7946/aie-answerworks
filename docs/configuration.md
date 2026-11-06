@@ -7,6 +7,7 @@ Non-secret settings live in YAML under `config/`; secrets live in `.env`. Everyt
 | `config/providers.yaml` | Providers and their models, optional prices (USD per 1M tokens), request timeouts and retries, the default provider and model |
 | `config/app.yaml` | App name and environment, CORS origins, token lifetimes, how many past messages chat sends, the upload limit |
 | `config/rag.yaml` | Named embedding models and splitting strategies with defaults, `top_k` and `min_score`, the vector store and accepted file types |
+| `config/monitoring.yaml` | Optional. Whether spans are exported over OTLP, where to, how much to sample, and the service names. Without the file tracing is off |
 | `config/corpora.yaml` | Shared corpora filled from a folder or a list of web addresses with `make ingest`, optionally refreshed on a schedule |
 
 ## Environment variables
@@ -19,6 +20,8 @@ Non-secret settings live in YAML under `config/`; secrets live in `.env`. Everyt
 | `ANTHROPIC_WORKSPACE_ID` | API | Only for Anthropic keys that are not scoped to a workspace |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | `create-admin` | Non-interactive first admin |
 | `METRICS_TOKEN` | API | Turns on `GET /metrics` (bearer token). Empty keeps it off |
+| `OTEL_EXPORTER_OTLP_HEADERS` | API, scheduler | Optional headers for the trace exporter, for example `Authorization=Bearer <token>`. Used only when tracing is enabled |
+| `TRACING_ENABLED`, `OTLP_ENDPOINT` | Web app | Export the web app's spans (`true`) to an OTLP/HTTP endpoint. Off by default |
 | `LOG_LEVEL` | API, scheduler | Application log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Empty uses the default |
 | `ANSWERWORKS_CONFIG_DIR` | API | Use another config directory |
 | `API_BASE_URL` | Web app | Where the API is (default `http://127.0.0.1:8000`) |

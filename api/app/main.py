@@ -20,14 +20,19 @@ from app.api.v1 import (
     rag,
 )
 from app.core.config import load_env
+from app.core.settings import load_monitoring
 from app.core.telemetry import telemetry
 from app.core.tracing import configure_logging, init_tracing
 
 load_env()  # LOG_LEVEL may be set in .env
 configure_logging()
-init_tracing("answerworks-api")
+_monitoring = load_monitoring()
+init_tracing(_monitoring.service_names.api, _monitoring.tracing)
 
-app = FastAPI(title="AnswerWorks API")
+# FastAPI opens the server span and its operation spans itself. Its log events carry exception
+# messages and stack traces, and `auto_configure` would add exporters from OTEL_* variables; both
+# are off, so what is exported is decided by config/monitoring.yaml and the exporter's filter.
+app = FastAPI(title="AnswerWorks API", telemetry={"logs": False, "auto_configure": False})
 app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 app.include_router(health.router)

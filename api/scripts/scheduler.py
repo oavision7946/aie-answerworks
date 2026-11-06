@@ -19,7 +19,7 @@ from opentelemetry.trace import Status, StatusCode
 from sqlalchemy.orm import Session
 
 from app.core.config import load_env
-from app.core.settings import get_settings
+from app.core.settings import get_settings, load_monitoring
 from app.core.tracing import configure_logging, init_tracing, request_context, tracer
 from app.db.models import Corpus
 from app.db.session import get_engine
@@ -87,9 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=float, default=60.0, help="time between passes")
     args = parser.parse_args(argv)
 
+    load_env()  # LOG_LEVEL may be set in .env
     configure_logging("INFO")
-    init_tracing("answerworks-scheduler")
-    load_env()
+    monitoring = load_monitoring()
+    init_tracing(monitoring.service_names.scheduler, monitoring.tracing)
     ctx = RagContext(get_settings(), get_registry(), PgVectorStore())
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):

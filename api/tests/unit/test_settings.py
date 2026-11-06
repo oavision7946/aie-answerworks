@@ -12,8 +12,11 @@ from app.core import config, settings
 from app.core.settings import (
     ChunkingConfig,
     CorporaConfig,
+    MonitoringConfig,
     Pricing,
     ProvidersConfig,
+    TracingConfig,
+    load_monitoring,
     load_settings,
 )
 
@@ -216,6 +219,43 @@ class TestOtherValidation(unittest.TestCase):
             self.load_with(lambda rag: rag.update(default_embedding="nope"))
         with self.assertRaisesRegex(ValidationError, "default_chunking"):
             self.load_with(lambda rag: rag.update(default_chunking="nope"))
+
+
+class TestMonitoringConfig(unittest.TestCase):
+    def test_defaults_keep_tracing_off(self):
+        config = MonitoringConfig()
+
+        self.assertFalse(config.tracing.enabled)
+        self.assertEqual(config.tracing.sample_ratio, 1.0)
+        self.assertEqual(config.service_names.api, "answerworks-api")
+
+    def test_the_shipped_file_is_valid_and_off(self):
+        loaded = MonitoringConfig.model_validate(
+            yaml.safe_load((CONFIG / "monitoring.yaml").read_text())
+        )
+
+        self.assertFalse(loaded.tracing.enabled)
+        self.assertEqual(load_settings().monitoring, loaded)
+
+    def test_a_missing_file_means_everything_off(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.dict(os.environ, {"ANSWERWORKS_CONFIG_DIR": folder}):
+                self.assertEqual(load_monitoring(), MonitoringConfig())
+
+    def test_the_endpoint_must_be_http_and_loses_a_trailing_slash(self):
+        self.assertEqual(
+            TracingConfig(otlp_endpoint="https://collector:4318/").otlp_endpoint,
+            "https://collector:4318",
+        )
+        with self.assertRaises(ValidationError):
+            TracingConfig(otlp_endpoint="collector:4318")
+
+    def test_ratio_and_timeout_are_bounded_and_unknown_keys_rejected(self):
+        for bad in ({"sample_ratio": 1.5}, {"sample_ratio": -0.1}, {"export_timeout_seconds": 0}):
+            with self.subTest(bad=bad), self.assertRaises(ValidationError):
+                TracingConfig(**bad)
+        with self.assertRaises(ValidationError):
+            MonitoringConfig.model_validate({"tracing": {"enable": True}})
 
 
 if __name__ == "__main__":

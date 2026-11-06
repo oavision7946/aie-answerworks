@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.core import tracing
 from app.core.settings import RagConfig
 from app.db.models import Chunk, Corpus, CorpusAccess, Document, DocumentStatus, User
 from app.services.rag.embeddings import Embedder
@@ -61,10 +62,21 @@ def search(
     top_k: int | None = None,
 ) -> list[Hit]:
     """Embed `query` with the index's model and return the best eligible chunks."""
-    [vector] = embedder.embed([query])
-    scored = store.search(
-        db, vector, spec, eligible_documents(user, corpus_ids), top_k or rag.retrieval.top_k
-    )
+    with tracing.span(
+        "embed.query",
+        **{
+            "answerworks.provider": embedder.provider.name,
+            "answerworks.model": spec.embedding_model,
+        },
+    ):
+        [vector] = embedder.embed([query])
+    limit = top_k or rag.retrieval.top_k
+    with tracing.span(
+        "vector.search",
+        **{"db.system": db.get_bind().dialect.name, "answerworks.top_k": limit},
+    ) as current:
+        scored = store.search(db, vector, spec, eligible_documents(user, corpus_ids), limit)
+        current.set_attribute("answerworks.rows", len(scored))
     return [
         Hit(s.chunk, s.chunk.document.filename, s.score)
         for s in scored

@@ -7,6 +7,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
+from app.core.tracing import instrument_engine
 
 CONNECT_TIMEOUT_SECONDS = 3
 
@@ -20,7 +21,9 @@ def create_db_engine(url: str) -> Engine:
 
 @lru_cache
 def get_engine() -> Engine:
-    return create_db_engine(get_settings().env.database_url)
+    engine = create_db_engine(get_settings().env.database_url)
+    instrument_engine(engine)
+    return engine
 
 
 def get_session() -> Iterator[Session]:

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
+from app.core import tracing
 from app.db.models import User
 from app.schemas.rag import Citation, SearchRequest, SearchResponse
 from app.services.rag import retriever
@@ -37,9 +38,28 @@ def retrieve(
     top_k: int | None = None,
 ) -> list[Hit]:
     spec = ctx.spec(embedding, chunking)
-    return retriever.search(
-        db, user, query, spec, ctx.embedder(spec), ctx.store, ctx.settings.rag, corpus_ids, top_k
-    )
+    with tracing.span(
+        "rag.retrieve",
+        **{
+            "answerworks.embedding": spec.embedding_name,
+            "answerworks.chunking": spec.chunking_name,
+            "answerworks.top_k": top_k or ctx.settings.rag.retrieval.top_k,
+            "answerworks.corpora": len(corpus_ids) if corpus_ids else None,
+        },
+    ) as current:
+        hits = retriever.search(
+            db,
+            user,
+            query,
+            spec,
+            ctx.embedder(spec),
+            ctx.store,
+            ctx.settings.rag,
+            corpus_ids,
+            top_k,
+        )
+        current.set_attribute("answerworks.hits", len(hits))
+        return hits
 
 
 def search(db: Session, user: User, ctx: RagContext, body: SearchRequest) -> SearchResponse:
