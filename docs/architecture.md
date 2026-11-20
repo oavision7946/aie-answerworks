@@ -13,12 +13,14 @@ The repository holds two independent Python packages, `api/` and `ui/`, each wit
 
 | Package | Role |
 |---|---|
-| `api/` | Routers: `health`, `metrics`, `auth`, `ask`, `chat`, `conversations`, `models`, `documents`, `corpora`, `rag`, `admin_users`, `admin_status` |
+| `api/` | Routers: `health`, `metrics`, `auth`, `ask`, `chat`, `conversations`, `models`, `documents`, `corpora`, `rag`, `admin_users`, `admin_status`, `monitoring` |
 | `core/` | Settings (YAML plus environment), security (Argon2, JWT), permission dependencies |
 | `schemas/` | Pydantic request and response models |
 | `services/llm/` | The `Provider` interface, the registry, the retry and streaming service, and one adapter per provider type |
 | `services/rag/` | Parsers, splitters, embeddings, ingestion, retriever, sources and the vector store |
-| `core/telemetry.py` | In-memory request and provider-call counters behind the status page and `/metrics` |
+| `core/telemetry.py` | In-memory counters, gauges and histograms behind the status page and `/metrics` |
+| `core/tracing.py` | Request ids, log correlation and optional OpenTelemetry tracing (spans carry ids, names, counts and timings, never text) |
+| `core/grafana_auth.py` | Dashboard links, the session cookie and the signed identity the API passes to Grafana (see `api/v1/monitoring.py`) |
 | `db/` | SQLAlchemy models, repositories and the session dependency; Alembic migrations live in `api/migrations` |
 
 Routes call services, services call repositories and providers. No route imports a provider SDK.
@@ -34,6 +36,10 @@ Routes call services, services call repositories and providers. No route imports
 ## Web app (`ui/app`)
 
 `main.py` shows the sign-in form (and the forced password change) and then builds the page list with `st.navigation`. Pages live in `views/`, shared widgets in `components/`, sign-in and chat state in `state/`, and every API call in `clients/api_client.py`. See [UI overview](ui/overview.md).
+
+## Monitoring (optional)
+
+The Compose `monitoring` profile adds an OpenTelemetry collector, Tempo (traces), Prometheus (metrics and alert rules), a blackbox prober, a PostgreSQL exporter and Grafana. The API and web app send spans to the collector, Prometheus scrapes `/metrics`, and Grafana is reached only through the API (`/monitoring/grafana/`), which signs monitors and administrators in from the **Monitoring** page. See [Observability](observability.md).
 
 ## Providers
 

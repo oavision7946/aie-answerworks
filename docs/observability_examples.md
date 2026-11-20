@@ -4,7 +4,7 @@ A walk through everything the system offers today for watching itself: health ch
 
 You will need about 20 minutes and a terminal. No model keys are required.
 
-> **Two parts:** steps 0 to 10 read ids from headers and logs and work from `curl`, the log output and the web app's **Admin · System** page. Step 11 is optional: it starts the bundled Grafana stack (needs Docker) to see the same requests as dashboards and traces. Details are in [Monitoring stack](observability.md#monitoring-stack-docker-compose).
+> **Two parts:** steps 0 to 10 read ids from headers and logs and work from `curl`, the log output and the web app's **Admin · System** page. Step 11 is optional: it starts the bundled Grafana stack (needs Docker) and opens it from the **Monitoring** page, to see the same requests as dashboards and traces. Details are in [Monitoring stack](observability.md#monitoring-stack-docker-compose).
 
 ## 0. Set up
 

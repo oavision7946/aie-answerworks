@@ -41,6 +41,7 @@ class AuthTestCase(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.settings: Settings = load_settings()
         self.settings.env.jwt_secret = self.secret
+        self.settings.env.metrics_token = ""  # whatever the developer's .env says
 
         def session():
             with Session(self.engine, expire_on_commit=False) as db:
