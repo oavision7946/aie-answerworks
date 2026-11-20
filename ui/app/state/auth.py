@@ -25,8 +25,8 @@ def must_change_password() -> bool:
     return bool(st.session_state[_KEY]["must_change_password"])
 
 
-def is_admin() -> bool:
-    return bool(st.session_state[_KEY].get("role") == "admin")
+def role() -> str:
+    return str(st.session_state[_KEY].get("role", "user"))
 
 
 def require_sign_in() -> None:

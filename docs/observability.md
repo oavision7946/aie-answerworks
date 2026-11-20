@@ -8,9 +8,10 @@ What the system offers to check, from outside or in a dashboard, that its parts 
 | `GET /health/ready` | anyone | Can it serve requests? (readiness) |
 | `GET /admin/status` | administrators | Everything below in detail, as JSON |
 | `GET /monitoring/status` | administrators and monitors | The same report as `/admin/status` |
+| `POST /monitoring/token` | administrators and monitors | A one-use link that opens the dashboards (see [Signing in to the dashboards](#signing-in-to-the-dashboards)) |
 | `GET /metrics` | holder of `METRICS_TOKEN` | The same numbers in the Prometheus text format |
 
-The web app shows `/admin/status` on **Admin · System**. For a hands-on walk through all of this, see the [observability examples](observability_examples.md).
+The web app shows `/admin/status` on **Admin · System**, and a summary of it, with the way into the dashboards, on **Monitoring** (monitors and administrators). For a hands-on walk through all of this, see the [observability examples](observability_examples.md).
 
 ## Liveness and readiness
 
@@ -142,7 +143,7 @@ The `monitoring` profile adds dashboards, alerts and trace search. It is off unl
 docker compose --profile monitoring up -d
 ```
 
-Open Grafana at http://localhost:3000 and sign in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` from `.env` (the default password is `admin`: change it). Every monitoring port is published on `127.0.0.1` only, and anonymous access is off.
+Monitors and administrators open the dashboards from the web app's **Monitoring** page (see [Signing in to the dashboards](#signing-in-to-the-dashboards)); set `MONITORING_JWT_SECRET` in `.env` first, because Grafana does not start without it. Grafana's own administrator login (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`, default password `admin`: change it) still works at http://localhost:3000/monitoring/grafana/ for provisioning and repairs. Every monitoring port is published on `127.0.0.1` only, and anonymous access is off.
 
 | Service | Role | Published |
 |---|---|---|
@@ -163,6 +164,16 @@ Dashboards (folder AnswerWorks):
 - **Request traces:** find a trace by the `X-Request-ID` the API returned, open it as a waterfall (browser call, API, SQL, vector search, embedding, model call), and list slow chats and errors.
 
 Alert rules live in `monitoring/alerts.yml` and show in Prometheus and in Grafana's Alert rules page. They cover a down or not-ready API, failing readiness checks, the web app and database, a 5xx ratio above 5%, slow completions and first tokens, provider error ratios, overdue or failing corpora, a growing model queue, a full KV cache, a hot or full GPU and a failing GPU exporter. No notifications are sent: add Alertmanager or Grafana contact points for that. `make test-alerts` runs `monitoring/alerts_test.yml` against the rules (it needs Docker).
+
+### Signing in to the dashboards
+
+Grafana is not opened to the network. The API serves it under `/monitoring/grafana/` and checks who is asking, so the dashboards follow the same accounts and roles as the rest of the system:
+
+1. On **Monitoring**, a monitor or administrator chooses **Open dashboards**. The web app calls `POST /monitoring/token` and shows a link that works once and for five minutes.
+2. Opening the link (`/monitoring/login?token=...`) trades it for an `HttpOnly`, `SameSite=Strict` cookie that lasts an hour and moves the browser on to the dashboards, so the token does not stay in the address bar. The access log shows the token as `[redacted]`.
+3. Every request after that goes through the API, which looks the account up again, so a deactivated account, a changed role or a pending password change closes the dashboards immediately. The API passes the request to Grafana with a signed identity (`X-JWT-Assertion`, valid for a minute) that makes everyone a Viewer. Grafana verifies it with `MONITORING_JWT_SECRET`, which is not the secret that signs access tokens, and it accepts nothing else, so the port itself gives nothing away.
+
+Viewers can open dashboards, run Explore queries and search traces, but not edit or save. Grafana Live (websockets) is off, since it would need a websocket proxy and the dashboards do not use it. Without `MONITORING_JWT_SECRET` the API answers 503 and the Monitoring page says the dashboards are not set up. The launch tokens are remembered per API process, like the counters, so run one API worker per container.
 
 **GPU exporter.** The model server usually runs outside Compose, so the GPU is read on the host:
 

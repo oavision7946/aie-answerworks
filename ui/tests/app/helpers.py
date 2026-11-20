@@ -47,6 +47,7 @@ SIGNED_IN = {
 }
 
 ADMIN_SIGNED_IN = {**SIGNED_IN, "email": "root@example.com", "role": "admin"}
+MONITOR_SIGNED_IN = {**SIGNED_IN, "email": "mona@example.com", "role": "monitor"}
 
 
 def new_app(auth=SIGNED_IN, view=MAIN) -> AppTest:

@@ -622,6 +622,19 @@ def get_system_status(token: str | None = None) -> SystemStatus:
     return _parse(_send("GET", "/admin/status", token), SystemStatus)
 
 
+class DashboardLink(BaseModel):
+    login_url: str
+    expires_in: int
+
+
+def get_monitoring_status(token: str | None = None) -> SystemStatus:
+    return _parse(_send("GET", "/monitoring/status", token), SystemStatus)
+
+
+def create_dashboard_link(token: str | None = None) -> DashboardLink:
+    return _parse(_send("POST", "/monitoring/token", token), DashboardLink)
+
+
 def list_corpora(token: str | None = None) -> list[CorpusInfo]:
     return _parse_list(_send("GET", "/corpora", token), CorpusInfo)
 

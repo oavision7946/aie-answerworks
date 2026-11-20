@@ -916,6 +916,26 @@
         "title": "CorpusUpdate",
         "type": "object"
       },
+      "DashboardLink": {
+        "properties": {
+          "expires_in": {
+            "description": "Seconds the link stays valid. It works once.",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "login_url": {
+            "description": "Open this address in a browser to reach the dashboards.",
+            "title": "Login Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "login_url",
+          "expires_in"
+        ],
+        "title": "DashboardLink",
+        "type": "object"
+      },
       "DatabaseStatus": {
         "properties": {
           "head": {
@@ -3652,6 +3672,33 @@
           }
         ],
         "summary": "Monitoring Status",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/monitoring/token": {
+      "post": {
+        "description": "A one-use link, valid for a few minutes, that opens the dashboards in a browser.",
+        "operationId": "dashboard_token_monitoring_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dashboard Token",
         "tags": [
           "monitoring"
         ]

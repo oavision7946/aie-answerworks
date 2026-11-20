@@ -18,7 +18,7 @@ Open http://localhost:8501 for the web app and http://localhost:8000/docs for th
 
 - **scheduler** (optional, profile `scheduler`): re-ingests corpora that set `refresh_minutes`. Start it with `docker compose --profile scheduler up -d`. A `filesystem` source must be mounted into the container; `url` sources need nothing more.
 
-- **Monitoring** (optional, profile `monitoring`): OpenTelemetry collector, Tempo, Prometheus, a blackbox prober, a PostgreSQL exporter and Grafana, with dashboards and alert rules provisioned from `monitoring/`. Start it with `docker compose --profile monitoring up -d`; see [Observability](observability.md#monitoring-stack-docker-compose) for what each part does and what to set in `.env`. All of its ports are bound to `127.0.0.1`.
+- **Monitoring** (optional, profile `monitoring`): OpenTelemetry collector, Tempo, Prometheus, a blackbox prober, a PostgreSQL exporter and Grafana, with dashboards and alert rules provisioned from `monitoring/`. Start it with `docker compose --profile monitoring up -d`; see [Observability](observability.md#monitoring-stack-docker-compose) for what each part does and what to set in `.env`. All of its ports are bound to `127.0.0.1`. People reach Grafana through the API, from the web app's **Monitoring** page, so set `MONITORING_JWT_SECRET`, and `API_PUBLIC_URL` to the address browsers use for the API. Behind HTTPS the session cookie is marked `Secure`.
 
 The images run as a non-root user and have a health check (`/health` for the API, which does not depend on the database, and `/_stcore/health` for the web app). Point a load balancer or orchestrator's *readiness* probe at `/health/ready`. See [Observability](observability.md).
 

@@ -12,6 +12,7 @@ Routes declare what they need with FastAPI dependencies from `app/core/permissio
 | `active_user` | `current_user` and no pending password change | 403 |
 | `admin_user` | `active_user` with role `admin` | 403 |
 | `monitoring_user` | `active_user` with role `admin` or `monitor` | 403 |
+| `dashboard_viewer` | the dashboard session cookie, with the same checks repeated against the database on every request | 401 (no or bad cookie), 403 |
 
 ## Route matrix
 
@@ -23,7 +24,9 @@ Routes declare what they need with FastAPI dependencies from `app/core/permissio
 | `/auth/login`, `/auth/refresh` | allowed | allowed | allowed | allowed |
 | `/auth/me`, `/auth/change-password` | 401 | allowed (even with a pending password change) | allowed (even with a pending password change) | allowed |
 | `/admin/users/*`, `GET /admin/status` | 401 | 403 | 403 | allowed |
-| `GET /monitoring/status` | 401 | 403 | allowed | allowed |
+| `GET /monitoring/status`, `POST /monitoring/token` | 401 | 403 | allowed | allowed |
+| `GET /monitoring/login` (with a dashboard link) | 401 without a valid link | 403 | allowed | allowed |
+| `/monitoring/grafana/*` | 401 without the dashboard cookie | 403 | allowed | allowed |
 | `GET /metrics` | 404 without `METRICS_TOKEN`; 401 without it as a bearer token | same | same | same |
 
 ## Lockout guard

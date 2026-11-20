@@ -19,6 +19,7 @@ The UI talks to the API only through `app/clients/api_client.py`; the API addres
 | Admin · Users | `app/views/admin_users.py` | `/admin/users` | Admins only: list, create, role, deactivate, reset password |
 | Admin · Corpora | `app/views/admin_corpora.py` | `/corpora`, `/documents` | Admins only: create, public flag, grant/revoke, upload, ingest, source and refresh interval, last run and problem, delete |
 | Admin · System | `app/views/admin_system.py` | `/admin/status` | Admins only: database and schema, providers and their call results, embedding models, corpora's last ingestion, counts and request totals |
+| Monitoring | `app/views/monitoring.py` | `/monitoring/status`, `POST /monitoring/token` | Monitors and admins: health summary and a one-use link into the dashboards |
 
 Chat also has an "Answer from my documents" switch with retrieval settings (embedding model, splitting strategy, corpora) and shows the sources of each answer.
 

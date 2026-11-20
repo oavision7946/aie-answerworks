@@ -18,7 +18,7 @@ def render_account() -> None:
             unsafe_allow_html=True,
         )
         st.markdown('<div class="side-label">Account</div>', unsafe_allow_html=True)
-        role = " (admin)" if auth.is_admin() else ""
+        role = "" if auth.role() == "user" else f" ({auth.role()})"
         st.caption(f"Signed in as {auth.email()}{role}")
         if st.button("Sign out", width="stretch"):
             auth.sign_out()

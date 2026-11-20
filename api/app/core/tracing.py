@@ -12,6 +12,7 @@ exporter drops anything that could slip through (query strings, exception messag
 
 import logging
 import os
+import re
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -366,6 +367,19 @@ class CorrelationFilter(logging.Filter):
         return True
 
 
+_LOGIN_TOKEN = re.compile(r"(/monitoring/login\?(?:[^ &]*&)*token=)[^ &]*")
+
+
+class RedactLoginToken(logging.Filter):
+    """Keep the token of a dashboard link out of the access log, which prints the whole address."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) > 2 and isinstance(args[2], str):
+            record.args = (*args[:2], _LOGIN_TOKEN.sub(r"\1[redacted]", args[2]), *args[3:])
+        return True
+
+
 LOG_FORMAT = (
     "%(asctime)s %(levelname)s %(name)s [request=%(request_id)s trace=%(trace_id)s] %(message)s"
 )
@@ -379,4 +393,7 @@ def configure_logging(default_level: str = "WARNING") -> None:
         handler.addFilter(CorrelationFilter())
         handler.setFormatter(logging.Formatter(LOG_FORMAT))
         root.addHandler(handler)
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactLoginToken) for f in access.filters):
+        access.addFilter(RedactLoginToken())
     root.setLevel((os.environ.get("LOG_LEVEL") or default_level).upper())  # empty = unset

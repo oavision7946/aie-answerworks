@@ -20,6 +20,7 @@ The UI is a Streamlit app that talks to the API over HTTP only. It never touches
 | Admin · Users | admins | Table of accounts; create a user with a temporary password; change role, deactivate or reactivate; reset a password. |
 | Admin · Corpora | admins | Create corpora, set the public flag, grant and revoke users, upload documents or ingest the configured source now, see the source, refresh interval, last run and last problem, see each file's status and indexes, delete. |
 | Admin · System | admins | Is everything working: database and schema, model providers and their call results, embedding models, corpora and their last ingestion, row counts and request totals. **Refresh** reloads it. |
+| Monitoring | monitors and admins | A short health summary (database, schema, providers, corpora to check) and **Open dashboards**, which asks the API for a one-use link to the Grafana dashboards and offers it as a button. Shown only when the monitoring stack is set up; otherwise the page says so. |
 
 ## Chat with documents
 

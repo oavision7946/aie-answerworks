@@ -237,6 +237,12 @@ class EnvSettings(BaseSettings):
     # Enables GET /metrics (Prometheus). Empty keeps the endpoint off.
     metrics_token: str = ""
     api_base_url: str = "http://localhost:8000"
+    # The dashboards (Grafana) are served through the API. The secret signs the links and the
+    # identity the API passes to Grafana; empty keeps the dashboard login off. `grafana_url` is
+    # where the API reaches Grafana, `api_public_url` where browsers reach the API.
+    monitoring_jwt_secret: str = ""
+    grafana_url: str = "http://localhost:3000"
+    api_public_url: str = "http://localhost:8000"
 
 
 class TracingConfig(_Strict):

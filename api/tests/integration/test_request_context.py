@@ -11,7 +11,7 @@ from opentelemetry.trace import SpanKind, StatusCode
 
 from app.api.middleware import request_ids
 from app.core import tracing
-from app.core.tracing import CorrelationFilter, configure_logging
+from app.core.tracing import CorrelationFilter, RedactLoginToken, configure_logging
 from app.main import app
 from app.services import status_service
 from tests.tracing_helpers import exporter
@@ -186,6 +186,33 @@ class TestConfigureLogging(unittest.TestCase):
         with patch.dict(os.environ, {"LOG_LEVEL": ""}):  # empty, as in a copied .env.example
             configure_logging("ERROR")
         self.assertEqual(root.level, logging.ERROR)
+
+    def test_dashboard_link_tokens_stay_out_of_the_access_log(self):
+        access = logging.getLogger("uvicorn.access")
+        configure_logging()
+        configure_logging()
+        self.assertEqual([isinstance(f, RedactLoginToken) for f in access.filters].count(True), 1)
+
+        def printed(path):
+            args = ("127.0.0.1:1", "GET", path, "1.1", 303)
+            record = logging.LogRecord(
+                "uvicorn.access", logging.INFO, __file__, 1, "%s %s", args, None
+            )
+            RedactLoginToken().filter(record)
+            return record.args[2]
+
+        self.assertEqual(
+            printed("/monitoring/login?token=eyJhbGciOi.abc-_"),
+            "/monitoring/login?token=[redacted]",
+        )
+        self.assertEqual(
+            printed("/monitoring/login?a=1&token=eyJ&b=2"),
+            "/monitoring/login?a=1&token=[redacted]&b=2",
+        )
+        self.assertEqual(printed("/monitoring/status?token=keep"), "/monitoring/status?token=keep")
+        record = logging.LogRecord("x", logging.INFO, __file__, 1, "plain message", None, None)
+        self.assertTrue(RedactLoginToken().filter(record))
+        self.assertIsNone(record.args)
 
     def test_the_filter_does_not_overwrite_ids_that_were_given(self):
         record = logging.LogRecord("x", logging.INFO, __file__, 1, "m", None, None)

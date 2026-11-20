@@ -244,6 +244,41 @@ class TestCorpora(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Administrator access"):
             api_client.get_system_status("tok")
 
+    @respx.mock
+    def test_monitoring_status_is_the_same_report(self):
+        route = respx.get(f"{BASE}/monitoring/status").respond(json=STATUS)
+
+        status = api_client.get_monitoring_status("tok")
+
+        self.assertEqual(route.calls.last.request.headers["Authorization"], "Bearer tok")
+        self.assertEqual((status.status, status.database.revision), ("ok", "0004"))
+
+    @respx.mock
+    def test_dashboard_link_is_requested_and_parsed(self):
+        route = respx.post(f"{BASE}/monitoring/token").respond(
+            json={"login_url": "http://api.test/monitoring/login?token=t", "expires_in": 300}
+        )
+
+        link = api_client.create_dashboard_link("tok")
+
+        self.assertEqual(route.calls.last.request.headers["Authorization"], "Bearer tok")
+        self.assertEqual(
+            (link.login_url, link.expires_in),
+            (
+                "http://api.test/monitoring/login?token=t",
+                300,
+            ),
+        )
+
+    @respx.mock
+    def test_dashboard_link_for_a_user_is_refused(self):
+        respx.post(f"{BASE}/monitoring/token").respond(
+            403, json={"detail": "Monitoring access is required."}
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Monitoring access"):
+            api_client.create_dashboard_link("tok")
+
 
 if __name__ == "__main__":
     unittest.main()

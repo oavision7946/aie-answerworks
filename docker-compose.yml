@@ -34,6 +34,7 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-answerworks}:${POSTGRES_PASSWORD:-answerworks}@db:5432/${POSTGRES_DB:-answerworks}
       ANSWERWORKS_CONFIG_DIR: /srv/answerworks/config
       OTLP_ENDPOINT: http://otel-collector:4318   # used when TRACING_ENABLED=true in .env
+      GRAFANA_URL: http://grafana:3000   # the dashboards are served through the API
       # Ollama or another model server on the host: use http://host.docker.internal:<port>
       # as base_url in providers.yaml (localhost would be the container itself).
     extra_hosts:
@@ -150,10 +151,25 @@ services:
       db:
         condition: service_healthy
 
+  # Reached through the API (/monitoring/grafana/), which signs people in from the Monitoring page.
+  # Grafana trusts a signed identity (X-JWT-Assertion) made with MONITORING_JWT_SECRET, and
+  # everyone arrives as a Viewer. The admin login below still works on the port itself.
   grafana:
     profiles: ["monitoring"]
     image: grafana/grafana:12.0.2
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ "$${#MONITORING_JWT_SECRET}" -lt 16 ]; then
+          echo "Set MONITORING_JWT_SECRET (at least 16 characters) in .env" >&2
+          exit 1
+        fi
+        k=$$(printf %s "$$MONITORING_JWT_SECRET" | base64 | tr -d '\n=' | tr '+/' '-_')
+        printf '{"keys":[{"kty":"oct","alg":"HS256","use":"sig","k":"%s"}]}' "$$k" > /tmp/jwks.json
+        exec /run.sh
     environment:
+      MONITORING_JWT_SECRET: ${MONITORING_JWT_SECRET:-}
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
@@ -161,6 +177,20 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/health.json
+      # Served under the API's address, so redirects and links lead back through the API.
+      GF_SERVER_ROOT_URL: ${API_PUBLIC_URL:-http://localhost:8000}/monitoring/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_LIVE_MAX_CONNECTIONS: "0"   # no websockets through the API; dashboards do not need them
+      # Sign in with the identity the API adds to each request. Grafana keeps no session for it.
+      GF_AUTH_JWT_ENABLED: "true"
+      GF_AUTH_JWT_HEADER_NAME: X-JWT-Assertion
+      GF_AUTH_JWT_JWK_SET_FILE: /tmp/jwks.json
+      GF_AUTH_JWT_EXPECT_CLAIMS: '{"iss":"answerworks"}'
+      GF_AUTH_JWT_USERNAME_CLAIM: sub
+      GF_AUTH_JWT_EMAIL_CLAIM: sub
+      GF_AUTH_JWT_AUTO_SIGN_UP: "true"
+      GF_AUTH_JWT_ROLE_ATTRIBUTE_PATH: role
+      GF_AUTH_JWT_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro

@@ -27,7 +27,7 @@ if auth.must_change_password():
 
 pages = [
     st.Page(spec.path, title=spec.title, icon=spec.icon, default=spec.default)
-    for spec in visible_pages(auth.is_admin())
+    for spec in visible_pages(auth.role())
 ]
 current = st.navigation(pages)
 render_account()

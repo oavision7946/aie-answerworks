@@ -7,7 +7,15 @@ import httpx
 import respx
 
 from app import config
-from tests.app.helpers import ADMIN_SIGNED_IN, ME_ADMIN, ME_USER, ONE, RAG_OPTIONS, new_app
+from tests.app.helpers import (
+    ADMIN_SIGNED_IN,
+    ME_ADMIN,
+    ME_USER,
+    MONITOR_SIGNED_IN,
+    ONE,
+    RAG_OPTIONS,
+    new_app,
+)
 from tests.app.test_auth_flow import PAIR, fill
 
 BASE = config.API_BASE_URL.rstrip("/")
@@ -136,6 +144,17 @@ class TestAccountBlock(unittest.TestCase):
 
         self.assertIn(
             "Signed in as root@example.com (admin)", [c.value for c in at.sidebar.caption]
+        )
+
+    @respx.mock
+    def test_marks_monitors(self):
+        respx.get(f"{BASE}/rag/options").respond(json=RAG_OPTIONS)
+        respx.get(f"{BASE}/models").respond(json=ONE)
+
+        at = new_app(auth=MONITOR_SIGNED_IN).run()
+
+        self.assertIn(
+            "Signed in as mona@example.com (monitor)", [c.value for c in at.sidebar.caption]
         )
 
     def test_displays_a_custom_api_url(self):

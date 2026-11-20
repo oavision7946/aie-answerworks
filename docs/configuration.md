@@ -22,7 +22,9 @@ Non-secret settings live in YAML under `config/`; secrets live in `.env`. Everyt
 | `METRICS_TOKEN` | API | Turns on `GET /metrics` (bearer token). Empty keeps it off |
 | `OTEL_EXPORTER_OTLP_HEADERS` | API, scheduler | Optional headers for the trace exporter, for example `Authorization=Bearer <token>`. Used only when tracing is enabled |
 | `TRACING_ENABLED`, `OTLP_ENDPOINT` | API, scheduler, web app | Export spans (`true`) to an OTLP/HTTP endpoint. Override `config/monitoring.yaml` for the API and scheduler; the web app reads only these. Off by default |
-| `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Compose `monitoring` profile | Grafana login (default password `admin`: change it) |
+| `MONITORING_JWT_SECRET` | API, Compose `monitoring` profile | Signs the dashboard links and the identity the API passes to Grafana. At least 16 characters, different from `JWT_SECRET`. Empty keeps the dashboard sign-in off, and Grafana refuses to start without it |
+| `API_PUBLIC_URL`, `GRAFANA_URL` | API, Compose `monitoring` profile | The address browsers use for the API (default `http://localhost:8000`; it also becomes Grafana's root URL) and where the API reaches Grafana (default `http://localhost:3000`; Compose sets `http://grafana:3000`) |
+| `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD` | Compose `monitoring` profile | Grafana's own administrator login (default password `admin`: change it) |
 | `VLLM_METRICS_TARGET`, `GPU_EXPORTER_TARGET` | Compose `monitoring` profile | Where Prometheus scrapes the model server and the host GPU exporter (`host:port`) |
 | `GRAFANA_PORT`, `PROMETHEUS_PORT`, `OTLP_PORT`, `OTLP_GRPC_PORT`, `PROMETHEUS_RETENTION` | Compose `monitoring` profile | Host ports (all on 127.0.0.1) and metric retention (default `15d`) |
 | `LOG_LEVEL` | API, scheduler | Application log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Empty uses the default |

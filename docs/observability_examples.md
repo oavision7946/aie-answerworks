@@ -264,7 +264,7 @@ Try the same with the database stopped (`make db-down`): `/health` still answers
 
 This runs everything in Docker Compose, with its own database (separate from `make db-up`), the keyless fake provider and the `monitoring` profile. Stop `make run-api` first: both use port 8000.
 
-1. Prepare the keyless config and make sure `.env` has `JWT_SECRET`, `METRICS_TOKEN` and `TRACING_ENABLED=true`:
+1. Prepare the keyless config and make sure `.env` has `JWT_SECRET`, `METRICS_TOKEN`, `MONITORING_JWT_SECRET` (another random string of 16 characters or more) and `TRACING_ENABLED=true`:
 
     ```bash
     cp -r config /tmp/aw-config
@@ -291,7 +291,7 @@ This runs everything in Docker Compose, with its own database (separate from `ma
     done
     ```
 
-4. Open http://localhost:3000 and sign in with `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (default `admin` / `admin`). After about a minute of scraping:
+4. Open the web app (`make run-ui`, or http://localhost:8501 in Compose), sign in as the monitor from step 2 (or the admin), go to **Monitoring**, and choose **Open dashboards** and then **Go to the dashboards**. Grafana opens already signed in as a Viewer; the link works once, so choose **Open dashboards** again for the next visit. (Grafana's own `GRAFANA_ADMIN_USER` login stays available at http://localhost:3000/monitoring/grafana/.) After about a minute of scraping:
     - **AnswerWorks · Health:** every tile is green, and the readiness checks show 1.
     - **AnswerWorks · Latency:** the chat appears under its route, and the stage panels split its time into `chat.prepare`, `llm.complete`, `chat.persist` and so on.
     - **AnswerWorks · Request traces:** paste a request id from step 3 into **Request id**. The table lists the trace; copy its trace id into **Trace id** to see the waterfall, from `POST /chat` down to each SQL statement. The prompt text is nowhere in it.
@@ -316,4 +316,4 @@ unset ANSWERWORKS_CONFIG_DIR METRICS_TOKEN JWT_SECRET
 
 If you ran step 11, also run `docker compose --profile monitoring down -v` (removes its containers and volumes), `rm -rf /tmp/aw-config` and `unset CONFIG_DIR`, and set `TRACING_ENABLED` back to empty in `.env`.
 
-Remove the monitor's access by changing its role back to `user`, or by setting `"is_active": false`, with `PATCH /admin/users/{id}`. Remove `METRICS_TOKEN` from `.env` to turn `/metrics` off again.
+Remove the monitor's access by changing its role back to `user`, or by setting `"is_active": false`, with `PATCH /admin/users/{id}`; open dashboards close on the next click. Remove `METRICS_TOKEN` from `.env` to turn `/metrics` off again.
